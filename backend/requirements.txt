@@ -1,0 +1,30 @@
+# SmartDiet AI Backend Dependencies
+
+# Web Framework
+fastapi==0.109.2
+uvicorn[standard]==0.27.1
+
+# Database
+supabase==2.3.4
+
+# AI/OpenRouter Client (OpenAI SDK compatible)
+openai==1.12.0
+
+# HTTP Client
+httpx==0.26.0
+
+# Environment Variables
+python-dotenv==1.0.1
+
+# Data Validation
+pydantic==2.6.1
+pydantic-settings==2.1.0
+
+# Image Processing (optional, for local preprocessing)
+Pillow==10.2.0
+
+# Async Support
+aiohttp==3.9.3
+
+# Utilities
+python-multipart==0.0.9  # For file uploads

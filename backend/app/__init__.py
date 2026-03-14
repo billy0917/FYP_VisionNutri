@@ -1,0 +1,1 @@
+# SmartDiet AI Backend Application
