@@ -10,6 +10,7 @@ import 'package:smart_diet_ai/features/camera/screens/camera_screen.dart';
 import 'package:smart_diet_ai/features/chat/screens/chat_screen.dart';
 import 'package:smart_diet_ai/features/food_entry/screens/manual_food_entry_screen.dart';
 import 'package:smart_diet_ai/features/dashboard/widgets/meal_thumbnail.dart';
+import 'package:smart_diet_ai/features/dashboard/screens/meal_history_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -521,7 +522,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
                 TextButton(
                   onPressed: () {
-                    // TODO: Navigate to meal history
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const MealHistoryScreen(),
+                      ),
+                    ).then((_) => _loadDashboardData());
                   },
                   child: const Text('See All'),
                 ),
