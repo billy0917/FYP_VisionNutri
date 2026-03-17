@@ -20,7 +20,7 @@ class AppConfig {
   // Vision AI - direct call from app (no local server needed)
   static const String visionApiUrl = 'https://api.apiplus.org/v1/chat/completions';
   static const String visionApiKey = 'sk-MHOUpYHg1MDV6LG1RjXdxmDoZ7t4ujGwsxzbBociNEw3xsob';
-  static const String visionModel = 'gemini-3.1-flash-lite-preview';
+  static const String visionModel = 'gemini-3.1-pro-preview';
   
   // Storage bucket names
   static const String foodImagesBucket = 'food-images';

@@ -17,7 +17,8 @@ class ApiClient {
       'respond ONLY with a valid JSON object (no markdown, no extra text) in this exact format: '
       '{"food_name": "name", "calories": 0, "protein": 0, "carbs": 0, "fat": 0, '
       '"reasoning": "brief explanation"}. '
-      'All numeric values must be integers. Be conservative when unsure.';
+      'All numeric values must be integers. Be conservative when unsure. '
+      'The reasoning field MUST be 50 words or fewer.';
 
   /// Analyze a food image directly via AI API — no local server needed.
   Future<FoodAnalysisResult> analyzeFood({
@@ -35,7 +36,7 @@ class ApiClient {
 
     final body = jsonEncode({
       'model': AppConfig.visionModel,
-      'max_tokens': 500,
+      'max_tokens': 5000,
       'temperature': 0.3,
       'messages': [
         {'role': 'system', 'content': _systemPrompt},
@@ -94,6 +95,27 @@ class ApiClient {
         reasoning: result['reasoning'] as String? ?? '',
       );
     } catch (_) {
+      // Fallback: extract fields via regex when JSON is truncated
+      int? _extractInt(String key) {
+        final m = RegExp('"$key"\\s*:\\s*(\\d+)').firstMatch(content);
+        return m != null ? int.tryParse(m.group(1)!) : null;
+      }
+      String? _extractStr(String key) {
+        final m = RegExp('"$key"\\s*:\\s*"([^"]*)"').firstMatch(content);
+        return m?.group(1);
+      }
+      final foodName = _extractStr('food_name');
+      final calories = _extractInt('calories');
+      if (foodName != null && calories != null) {
+        return FoodAnalysisResult(
+          foodName: foodName,
+          calories: calories,
+          protein: _extractInt('protein') ?? 0,
+          carbs: _extractInt('carbs') ?? 0,
+          fat: _extractInt('fat') ?? 0,
+          reasoning: '',
+        );
+      }
       throw ApiException(
         statusCode: 500,
         message: 'Failed to parse AI response: $content',
