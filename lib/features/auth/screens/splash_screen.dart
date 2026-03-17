@@ -1,10 +1,11 @@
-/// SmartDiet AI - Splash Screen
+﻿/// SmartDiet AI - Splash Screen
 /// 
 /// Initial loading screen that checks authentication state.
 library;
 
 import 'package:flutter/material.dart';
 import 'package:smart_diet_ai/core/services/supabase_service.dart';
+import 'package:smart_diet_ai/core/theme/clay_theme.dart';
 import 'package:smart_diet_ai/features/auth/screens/login_screen.dart';
 import 'package:smart_diet_ai/features/dashboard/screens/dashboard_screen.dart';
 
@@ -44,48 +45,56 @@ class _SplashScreenState extends State<SplashScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
             colors: [
-              Theme.of(context).colorScheme.primary,
-              Theme.of(context).colorScheme.primaryContainer,
+              ClayColors.primary,
+              ClayColors.primaryDeep,
+              ClayColors.primary,
             ],
+            stops: [0.0, 0.5, 1.0],
           ),
         ),
         child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // App logo placeholder
+              // App logo — clay raised style
               Container(
-                width: 120,
-                height: 120,
+                width: 130,
+                height: 130,
                 decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
+                  color: ClayColors.surface,
+                  borderRadius: BorderRadius.circular(36),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.2),
+                      color: ClayColors.primaryDeep.withValues(alpha: 0.5),
+                      offset: const Offset(8, 8),
                       blurRadius: 20,
-                      offset: const Offset(0, 10),
+                    ),
+                    BoxShadow(
+                      color: Colors.white.withValues(alpha: 0.25),
+                      offset: const Offset(-6, -6),
+                      blurRadius: 16,
                     ),
                   ],
                 ),
-                child: Icon(
+                child: const Icon(
                   Icons.restaurant_menu,
                   size: 64,
-                  color: Theme.of(context).colorScheme.primary,
+                  color: ClayColors.primary,
                 ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 28),
               const Text(
                 'SmartDiet AI',
                 style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
+                  fontSize: 34,
+                  fontWeight: FontWeight.w800,
                   color: Colors.white,
+                  letterSpacing: -0.5,
                 ),
               ),
               const SizedBox(height: 8),
@@ -93,7 +102,8 @@ class _SplashScreenState extends State<SplashScreen> {
                 'Your AI-Powered Nutrition Partner',
                 style: TextStyle(
                   fontSize: 16,
-                  color: Colors.white.withValues(alpha: 0.8),
+                  fontWeight: FontWeight.w500,
+                  color: Colors.white.withValues(alpha: 0.85),
                 ),
               ),
               const SizedBox(height: 48),

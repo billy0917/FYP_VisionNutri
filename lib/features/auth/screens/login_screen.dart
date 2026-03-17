@@ -1,10 +1,11 @@
-/// SmartDiet AI - Login Screen
+﻿/// SmartDiet AI - Login Screen
 /// 
 /// User authentication screen with email/password login.
 library;
 
 import 'package:flutter/material.dart';
 import 'package:smart_diet_ai/core/services/supabase_service.dart';
+import 'package:smart_diet_ai/core/theme/clay_theme.dart';
 import 'package:smart_diet_ai/features/auth/screens/register_screen.dart';
 import 'package:smart_diet_ai/features/dashboard/screens/dashboard_screen.dart';
 
@@ -71,11 +72,16 @@ class _LoginScreenState extends State<LoginScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SizedBox(height: 48),
-              // Header
-              Icon(
-                Icons.restaurant_menu,
-                size: 64,
-                color: Theme.of(context).colorScheme.primary,
+              // Header — clay icon
+              Container(
+                width: 80,
+                height: 80,
+                decoration: ClayDecoration.card(),
+                child: const Icon(
+                  Icons.restaurant_menu,
+                  size: 40,
+                  color: ClayColors.primary,
+                ),
               ),
               const SizedBox(height: 16),
               Text(

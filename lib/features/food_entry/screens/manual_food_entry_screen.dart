@@ -1,4 +1,4 @@
-/// SmartDiet AI - Manual Food Entry Screen
+﻿/// SmartDiet AI - Manual Food Entry Screen
 /// 
 /// Screen for manually entering food nutritional information.
 library;
@@ -6,6 +6,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:smart_diet_ai/core/services/supabase_service.dart';
+import 'package:smart_diet_ai/core/theme/clay_theme.dart';
 
 class ManualFoodEntryScreen extends StatefulWidget {
   const ManualFoodEntryScreen({super.key});
@@ -69,7 +70,7 @@ class _ManualFoodEntryScreenState extends State<ManualFoodEntryScreen> {
             backgroundColor: Colors.green,
           ),
         );
-        Navigator.of(context).pop(true); // 返回並通知已儲存
+        Navigator.of(context).pop(true); // Return and notify saved
       }
     } catch (e) {
       if (mounted) {
@@ -100,7 +101,7 @@ class _ManualFoodEntryScreenState extends State<ManualFoodEntryScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // 食物名稱
+              // Food name
               TextFormField(
                 controller: _foodNameController,
                 textCapitalization: TextCapitalization.words,
@@ -118,7 +119,7 @@ class _ManualFoodEntryScreenState extends State<ManualFoodEntryScreen> {
               ),
               const SizedBox(height: 16),
 
-              // 卡路里
+              // Calories
               TextFormField(
                 controller: _caloriesController,
                 keyboardType: TextInputType.number,
@@ -141,7 +142,7 @@ class _ManualFoodEntryScreenState extends State<ManualFoodEntryScreen> {
               ),
               const SizedBox(height: 16),
 
-              // 蛋白質、碳水化合物、脂肪 (一行三個)
+              // Protein, Carbs, Fat (one row, three fields)
               Row(
                 children: [
                   Expanded(
@@ -219,7 +220,7 @@ class _ManualFoodEntryScreenState extends State<ManualFoodEntryScreen> {
               ),
               const SizedBox(height: 24),
 
-              // 餐點類型選擇
+              // Meal type selector
               const Text(
                 'Meal Type *',
                 style: TextStyle(
@@ -237,7 +238,8 @@ class _ManualFoodEntryScreenState extends State<ManualFoodEntryScreen> {
                     label: Text(
                       type[0].toUpperCase() + type.substring(1),
                       style: TextStyle(
-                        color: isSelected ? Colors.white : null,
+                        color: isSelected ? Colors.white : ClayColors.primaryDeep,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                     selected: isSelected,
@@ -252,7 +254,7 @@ class _ManualFoodEntryScreenState extends State<ManualFoodEntryScreen> {
               ),
               const SizedBox(height: 32),
 
-              // 儲存按鈕
+              // Save button
               ElevatedButton(
                 onPressed: _isSaving ? null : _saveFoodLog,
                 style: ElevatedButton.styleFrom(
@@ -274,7 +276,7 @@ class _ManualFoodEntryScreenState extends State<ManualFoodEntryScreen> {
               ),
               const SizedBox(height: 16),
 
-              // 提示文字
+              // Hint text
               Text(
                 'Tip: You can also use the camera to scan food and get automatic nutritional estimates.',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(

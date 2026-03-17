@@ -1,10 +1,11 @@
-/// SmartDiet AI - Dashboard Screen
+﻿/// SmartDiet AI - Dashboard Screen
 /// 
 /// Main home screen showing daily stats, gamification, and quick actions.
 library;
 
 import 'package:flutter/material.dart';
 import 'package:smart_diet_ai/core/services/supabase_service.dart';
+import 'package:smart_diet_ai/core/theme/clay_theme.dart';
 import 'package:smart_diet_ai/features/auth/screens/login_screen.dart';
 import 'package:smart_diet_ai/features/camera/screens/camera_screen.dart';
 import 'package:smart_diet_ai/features/chat/screens/chat_screen.dart';
@@ -33,12 +34,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     'mealsLogged': 0,
   };
   
-  Map<String, dynamic> _gamificationStats = {
-    'currentStreak': 0,
-    'totalPoints': 0,
-    'level': 1,
-  };
-
   List<Map<String, dynamic>> _recentMeals = [];
   bool _isLoading = true;
 
@@ -97,11 +92,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
           const ChatScreen(),
         ],
       ),
-      bottomNavigationBar: NavigationBar(
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).brightness == Brightness.dark
+              ? ClayColors.darkSurfaceCard
+              : ClayColors.surfaceCard,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          boxShadow: [
+            BoxShadow(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? ClayColors.darkShadowDark
+                  : ClayColors.shadowDark,
+              offset: const Offset(0, -4),
+              blurRadius: 16,
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          child: NavigationBar(
         selectedIndex: _currentIndex,
         onDestinationSelected: (index) {
           setState(() => _currentIndex = index);
-          // 每次切換回 Dashboard 都重新載入數據
+          // Reload data when switching back to Dashboard
           if (index == 0) {
             _loadDashboardData();
           }
@@ -124,12 +137,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ],
       ),
+        ),
+      ),
       floatingActionButton: _currentIndex == 0
           ? Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                // 手動輸入按鈕
+                // Manual entry button
                 FloatingActionButton(
                   heroTag: 'manual_entry',
                   onPressed: () async {
@@ -140,14 +155,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                     );
                     if (result == true) {
-                      // 重新載入數據
+                      // Reload data
                       _loadDashboardData();
                     }
                   },
                   child: const Icon(Icons.edit),
                 ),
                 const SizedBox(height: 12),
-                // 拍照按鈕
+                // Camera button
                 FloatingActionButton.extended(
                   heroTag: 'camera',
                   onPressed: () {
@@ -170,7 +185,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final today = DateTime.now();
       final startOfDay = DateTime(today.year, today.month, today.day);
 
-      // 載入今天的食物記錄
+      // Load today's food logs
       final foodLogsResponse = await SupabaseService.client
           .from('food_logs')
           .select()
@@ -180,7 +195,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
       _recentMeals = List<Map<String, dynamic>>.from(foodLogsResponse);
 
-      // 計算今日營養總和
+      // Calculate daily nutrition totals
       int totalCalories = 0;
       double totalProtein = 0.0;
       double totalCarbs = 0.0;
@@ -193,13 +208,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         totalFat += (meal['fat'] as num?)?.toDouble() ?? 0.0;
       }
 
-      // 載入遊戲化數據
-      final gamificationResponse = await SupabaseService.client
-          .from('gamification_stats')
-          .select()
-          .eq('user_id', userId)
-          .maybeSingle();
-
       setState(() {
         _dailyStats = {
           'calories': totalCalories,
@@ -210,14 +218,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
           'fat': totalFat,
           'mealsLogged': _recentMeals.length,
         };
-
-        if (gamificationResponse != null) {
-          _gamificationStats = {
-            'currentStreak': gamificationResponse['current_streak'] ?? 0,
-            'totalPoints': gamificationResponse['total_points'] ?? 0,
-            'level': gamificationResponse['level'] ?? 1,
-          };
-        }
 
         _isLoading = false;
       });
@@ -243,20 +243,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
       onRefresh: _loadDashboardData,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Gamification card
-            _buildGamificationCard(),
+            _buildGreetingHeader(),
+            const SizedBox(height: 20),
+            _buildCalorieHeroCard(),
             const SizedBox(height: 16),
-            // Daily progress card
-            _buildDailyProgressCard(),
-            const SizedBox(height: 16),
-            // Macros breakdown
             _buildMacrosCard(),
             const SizedBox(height: 16),
-            // Recent meals
             _buildRecentMealsCard(),
           ],
         ),
@@ -264,208 +260,208 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildGamificationCard() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  Widget _buildGreetingHeader() {
+    final hour = DateTime.now().hour;
+    final String greeting;
+    if (hour < 12) {
+      greeting = 'Good morning!';
+    } else if (hour < 18) {
+      greeting = 'Good afternoon!';
+    } else {
+      greeting = 'Good evening!';
+    }
+    const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final now = DateTime.now();
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final dateStr = '${weekdays[now.weekday - 1]}, ${months[now.month - 1]} ${now.day}';
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, bottom: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                greeting,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: ClayColors.primaryDeep,
+                    ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                dateStr,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: ClayColors.primaryLight,
+                      fontWeight: FontWeight.w500,
+                    ),
+              ),
+            ],
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: ClayDecoration.badge(color: ClayColors.primary),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
+                const Icon(Icons.restaurant, size: 16, color: ClayColors.primaryDeep),
+                const SizedBox(width: 5),
                 Text(
-                  'Your Progress',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
+                  '${_dailyStats['mealsLogged']} meals today',
+                  style: const TextStyle(
+                    color: ClayColors.primaryDeep,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCalorieHeroCard() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final calories = _dailyStats['calories'] as int;
+    final targetCalories = _dailyStats['targetCalories'] as int;
+    final calorieProgress = (calories / targetCalories).clamp(0.0, 1.0);
+    final protein = (_dailyStats['protein'] as num).toDouble();
+    final targetProtein = _dailyStats['targetProtein'] as int;
+    final proteinProgress = (protein / targetProtein).clamp(0.0, 1.0);
+    final remaining = (targetCalories - calories).clamp(0, targetCalories);
+    final isOverTarget = calories > targetCalories;
+
+    return Container(
+      decoration: ClayDecoration.card(isDark: isDark),
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Today\'s Calories',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '$calories',
+                style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: ClayColors.calorie,
+                      height: 1.0,
+                    ),
+              ),
+              const SizedBox(width: 6),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 5),
+                child: Text(
+                  '/ $targetCalories kcal',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Colors.grey[500],
                       ),
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Text(
-                    'Level ${_gamificationStats['level']}',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.primary,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildStatItem(
-                  icon: Icons.local_fire_department,
-                  iconColor: Colors.orange,
-                  value: '${_gamificationStats['currentStreak']}',
-                  label: 'Day Streak',
-                ),
-                _buildStatItem(
-                  icon: Icons.stars,
-                  iconColor: Colors.amber,
-                  value: '${_gamificationStats['totalPoints']}',
-                  label: 'Points',
-                ),
-                _buildStatItem(
-                  icon: Icons.restaurant,
-                  iconColor: Colors.green,
-                  value: '${_dailyStats['mealsLogged']}',
-                  label: 'Meals Today',
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStatItem({
-    required IconData icon,
-    required Color iconColor,
-    required String value,
-    required String label,
-  }) {
-    return Column(
-      children: [
-        Icon(icon, size: 32, color: iconColor),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
               ),
-        ),
-        Text(
-          label,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Colors.grey[600],
-              ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDailyProgressCard() {
-    final calorieProgress = _dailyStats['calories'] / _dailyStats['targetCalories'];
-    final proteinProgress = _dailyStats['protein'] / _dailyStats['targetProtein'];
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Today\'s Goals',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
+              const Spacer(),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    isOverTarget ? 'Over' : 'Remaining',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.grey[500],
+                        ),
                   ),
-            ),
-            const SizedBox(height: 16),
-            _buildProgressBar(
-              label: 'Calories',
-              current: _dailyStats['calories'],
-              target: _dailyStats['targetCalories'],
-              progress: calorieProgress,
-              color: Colors.orange,
-              unit: 'kcal',
-            ),
-            const SizedBox(height: 12),
-            _buildProgressBar(
-              label: 'Protein',
-              current: _dailyStats['protein'],
-              target: _dailyStats['targetProtein'],
-              progress: proteinProgress,
-              color: Colors.blue,
-              unit: 'g',
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildProgressBar({
-    required String label,
-    required num current,
-    required int target,
-    required double progress,
-    required Color color,
-    required String unit,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(label),
-            Text(
-              '${current.toStringAsFixed(current is double ? 1 : 0)} / $target $unit',
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ],
-        ),
-        const SizedBox(height: 4),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(4),
-          child: LinearProgressIndicator(
-            value: progress.clamp(0.0, 1.0),
-            minHeight: 8,
-            backgroundColor: color.withValues(alpha: 0.2),
-            valueColor: AlwaysStoppedAnimation<Color>(color),
+                  Text(
+                    isOverTarget
+                        ? '+${calories - targetCalories}'
+                        : '$remaining',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          color: isOverTarget ? ClayColors.error : ClayColors.primary,
+                        ),
+                  ),
+                  Text(
+                    'kcal',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.grey[500],
+                        ),
+                  ),
+                ],
+              ),
+            ],
           ),
-        ),
-      ],
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: LinearProgressIndicator(
+              value: calorieProgress,
+              minHeight: 14,
+              backgroundColor: ClayColors.calorie.withValues(alpha: 0.15),
+              valueColor: AlwaysStoppedAnimation<Color>(
+                isOverTarget ? ClayColors.error : ClayColors.calorie,
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Protein',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+              Text(
+                '${protein.toStringAsFixed(1)} / $targetProtein g',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: ClayColors.protein,
+                    ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: LinearProgressIndicator(
+              value: proteinProgress,
+              minHeight: 8,
+              backgroundColor: ClayColors.protein.withValues(alpha: 0.15),
+              valueColor: AlwaysStoppedAnimation<Color>(ClayColors.protein),
+            ),
+          ),
+        ],
+      ),
     );
   }
+
+
 
   Widget _buildMacrosCard() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Macros Breakdown',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildMacroCircle(
-                  label: 'Protein',
-                  value: _dailyStats['protein'],
-                  color: Colors.blue,
-                ),
-                _buildMacroCircle(
-                  label: 'Carbs',
-                  value: _dailyStats['carbs'],
-                  color: Colors.green,
-                ),
-                _buildMacroCircle(
-                  label: 'Fat',
-                  value: _dailyStats['fat'],
-                  color: Colors.orange,
-                ),
-              ],
-            ),
-          ],
-        ),
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      decoration: ClayDecoration.card(isDark: isDark),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _buildMacroCircle(label: 'Carbs', value: _dailyStats['carbs'], color: ClayColors.carbs),
+          Container(width: 1, height: 56, color: ClayColors.shadowDark.withValues(alpha: 0.25)),
+          _buildMacroCircle(label: 'Protein', value: _dailyStats['protein'], color: ClayColors.protein),
+          Container(width: 1, height: 56, color: ClayColors.shadowDark.withValues(alpha: 0.25)),
+          _buildMacroCircle(label: 'Fat', value: _dailyStats['fat'], color: ClayColors.fat),
+        ],
       ),
     );
   }
@@ -476,39 +472,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
     required Color color,
   }) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Container(
-          width: 64,
-          height: 64,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: color.withValues(alpha: 0.2),
-            border: Border.all(color: color, width: 3),
+        Text(
+          value.toStringAsFixed(1),
+          style: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w800,
+            color: color,
+            height: 1.1,
           ),
-          child: Center(
-            child: Text(
-              '${value.toStringAsFixed(1)}g',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
-            ),
+        ),
+        Text(
+          'g',
+          style: TextStyle(
+            fontSize: 11,
+            color: color.withValues(alpha: 0.65),
+            fontWeight: FontWeight.w600,
           ),
         ),
         const SizedBox(height: 4),
         Text(
           label,
-          style: Theme.of(context).textTheme.bodySmall,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: Colors.grey[600],
+              ),
         ),
       ],
     );
   }
 
   Widget _buildRecentMealsCard() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      decoration: ClayDecoration.card(isDark: isDark),
+      padding: const EdgeInsets.all(20),
+      child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
@@ -534,7 +534,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ],
             ),
             const SizedBox(height: 8),
-            // 顯示真實的食物記錄
+            // Show actual food logs
             if (_recentMeals.isEmpty)
               Center(
                 child: Padding(
@@ -577,8 +577,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       alignment: Alignment.centerRight,
                       padding: const EdgeInsets.only(right: 16),
                       decoration: BoxDecoration(
-                        color: Colors.red,
-                        borderRadius: BorderRadius.circular(12),
+                        color: ClayColors.error,
+                        borderRadius: BorderRadius.circular(20),
                       ),
                       child: const Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -600,7 +600,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
               }).expand((element) => element),
           ],
         ),
-      ),
     );
   }
 
@@ -652,7 +651,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           .delete()
           .eq('id', mealId);
 
-      // 從本地列表移除並重算統計
+      // Remove from local list and recalculate stats
       setState(() {
         _recentMeals.removeWhere((m) => m['id'] == mealId);
         final calories = (meal['calories'] as int?) ?? 0;
@@ -684,7 +683,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           SnackBar(content: Text('Failed to delete: $e'), backgroundColor: Colors.red),
         );
       }
-      // 刪除失敗則重新載入回原狀態
+      // Reload original state if deletion fails
       _loadDashboardData();
     }
   }
@@ -698,32 +697,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final fat = (meal['fat'] as num?)?.toDouble() ?? 0.0;
     final localImagePath = meal['local_image_path'] as String?;
     final time = _formatTime(meal['logged_at']);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.5),
-        ),
-      ),
+      padding: const EdgeInsets.all(12),
+      decoration: ClayDecoration.flat(isDark: isDark, radius: 20),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 圖片縮圖
+          // Image thumbnail
           MealThumbnail(
             localImagePath: localImagePath,
             mealType: mealType,
             size: 72,
           ),
           const SizedBox(width: 12),
-          // 右側內容
+          // Right side content
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 食物名稱 + 時間
+                // Food name + time
                 Row(
                   children: [
                     Expanded(
@@ -745,13 +739,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ],
                 ),
                 const SizedBox(height: 4),
-                // 餐點類型 chip
+                // Meal type chip
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: _mealTypeColor(mealType).withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                  decoration: ClayDecoration.badge(color: _mealTypeColor(mealType)),
                   child: Text(
                     _formatMealType(mealType),
                     style: TextStyle(
@@ -762,16 +753,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                // 卡路里 + 三大營養素
-                Row(
+                // Calories + macros
+                Wrap(
+                  spacing: 5,
+                  runSpacing: 4,
                   children: [
-                    _buildNutrientBadge('$calories', 'kcal', Colors.orange),
-                    const SizedBox(width: 6),
-                    _buildNutrientBadge('${protein.toStringAsFixed(1)}g', 'P', Colors.blue),
-                    const SizedBox(width: 6),
-                    _buildNutrientBadge('${carbs.toStringAsFixed(1)}g', 'C', Colors.green),
-                    const SizedBox(width: 6),
-                    _buildNutrientBadge('${fat.toStringAsFixed(1)}g', 'F', Colors.red),
+                    _buildNutrientBadge('$calories', 'kcal', ClayColors.calorie),
+                    _buildNutrientBadge('${protein.toStringAsFixed(1)}g', 'P', ClayColors.protein),
+                    _buildNutrientBadge('${carbs.toStringAsFixed(1)}g', 'C', ClayColors.carbs),
+                    _buildNutrientBadge('${fat.toStringAsFixed(1)}g', 'F', ClayColors.fat),
                   ],
                 ),
               ],
@@ -784,11 +774,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _buildNutrientBadge(String value, String label, Color color) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(6),
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: ClayDecoration.badge(color: color),
       child: Text(
         '$label $value',
         style: TextStyle(

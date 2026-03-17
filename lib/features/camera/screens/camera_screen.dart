@@ -1,4 +1,4 @@
-/// SmartDiet AI - Camera Screen
+﻿/// SmartDiet AI - Camera Screen
 /// 
 /// Screen for capturing food images and getting AI analysis.
 library;
@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:smart_diet_ai/core/services/api_client.dart';
 import 'package:smart_diet_ai/core/services/supabase_service.dart';
+import 'package:smart_diet_ai/core/theme/clay_theme.dart';
 
 // dart:io is only used on non-web platforms
 import 'package:smart_diet_ai/features/camera/screens/camera_io_helper.dart'
@@ -44,10 +45,10 @@ class _CameraScreenState extends State<CameraScreen> {
       );
 
       if (image != null) {
-        // 讀取圖片 bytes
+        // Read image bytes
         final bytes = await image.readAsBytes();
         
-        // 儲存到本地應用目錄
+        // Save to local app directory
         final localPath = await _saveImageLocally(bytes);
         
         setState(() {
@@ -68,9 +69,9 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
-  /// 將圖片儲存到本地應用目錄（Web 上跳過）
+  /// Save image to local app directory (skipped on Web)
   Future<String?> _saveImageLocally(Uint8List bytes) async {
-    if (kIsWeb) return null; // Web 不支援本地檔案系統
+    if (kIsWeb) return null; // Web does not support local file system
     return saveImageToLocalStorage(bytes);
   }
 
@@ -80,7 +81,7 @@ class _CameraScreenState extends State<CameraScreen> {
     setState(() => _isAnalyzing = true);
 
     try {
-      // 將圖片轉為 base64 發送給後端
+      // Encode image as base64 and send to backend
       final base64Image = base64Encode(_imageBytes!);
       final result = await ApiClient().analyzeFood(
         imageBase64: base64Image,
@@ -115,7 +116,7 @@ class _CameraScreenState extends State<CameraScreen> {
     }
 
     try {
-      // 儲存到 Supabase（只儲存分析結果，不含可能不存在的欄位）
+      // Save to Supabase (only store analysis result, exclude potentially missing fields)
       await SupabaseService.client.from('food_logs').insert({
         'user_id': SupabaseService.currentUser!.id,
         'food_name': _analysisResult!.foodName,
@@ -136,7 +137,7 @@ class _CameraScreenState extends State<CameraScreen> {
             backgroundColor: Colors.green,
           ),
         );
-        // 通知 Dashboard 重新載入
+        // Notify Dashboard to reload
         widget.onSaved?.call();
       }
     } catch (e) {
@@ -190,7 +191,9 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Widget _buildImageSection() {
-    return Card(
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      decoration: ClayDecoration.card(isDark: isDark),
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
@@ -198,7 +201,10 @@ class _CameraScreenState extends State<CameraScreen> {
           Container(
             height: 250,
             width: double.infinity,
-            color: Colors.grey[200],
+            decoration: BoxDecoration(
+              color: isDark ? ClayColors.darkSurface : ClayColors.surfaceDim,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            ),
             child: _imageBytes != null
                 ? Image.memory(
                     _imageBytes!,
@@ -267,16 +273,17 @@ class _CameraScreenState extends State<CameraScreen> {
 
   Widget _buildAnalysisResultCard() {
     final result = _analysisResult!;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
+    return Container(
+      decoration: ClayDecoration.card(isDark: isDark),
+      padding: const EdgeInsets.all(20),
+      child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                const Icon(Icons.auto_awesome, color: Colors.amber),
+                const Icon(Icons.auto_awesome, color: ClayColors.accent),
                 const SizedBox(width: 8),
                 Text(
                   'AI Analysis',
@@ -298,10 +305,10 @@ class _CameraScreenState extends State<CameraScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _buildMacroItem('Calories', '${result.calories}', 'kcal', Colors.orange),
-                _buildMacroItem('Protein', '${result.protein}', 'g', Colors.blue),
-                _buildMacroItem('Carbs', '${result.carbs}', 'g', Colors.green),
-                _buildMacroItem('Fat', '${result.fat}', 'g', Colors.purple),
+                _buildMacroItem('Calories', '${result.calories}', 'kcal', ClayColors.calorie),
+                _buildMacroItem('Protein', '${result.protein}', 'g', ClayColors.protein),
+                _buildMacroItem('Carbs', '${result.carbs}', 'g', ClayColors.carbs),
+                _buildMacroItem('Fat', '${result.fat}', 'g', ClayColors.fat),
               ],
             ),
             if (result.reasoning.isNotEmpty) ...[
@@ -324,7 +331,6 @@ class _CameraScreenState extends State<CameraScreen> {
             ],
           ],
         ),
-      ),
     );
   }
 
@@ -356,10 +362,11 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   Widget _buildMealTypeSelector() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      decoration: ClayDecoration.card(isDark: isDark),
+      padding: const EdgeInsets.all(20),
+      child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
@@ -374,8 +381,15 @@ class _CameraScreenState extends State<CameraScreen> {
               children: _mealTypes.map((type) {
                 final isSelected = _selectedMealType == type;
                 return ChoiceChip(
-                  label: Text(type),
+                  label: Text(
+                    type[0].toUpperCase() + type.substring(1),
+                    style: TextStyle(
+                      color: isSelected ? Colors.white : ClayColors.primaryDeep,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                   selected: isSelected,
+                  selectedColor: Theme.of(context).colorScheme.primary,
                   onSelected: (selected) {
                     setState(() {
                       _selectedMealType = selected ? type : null;
@@ -386,7 +400,6 @@ class _CameraScreenState extends State<CameraScreen> {
             ),
           ],
         ),
-      ),
     );
   }
 }

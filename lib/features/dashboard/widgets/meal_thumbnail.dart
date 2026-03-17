@@ -1,4 +1,4 @@
-/// Meal thumbnail image widget — loads from local file on mobile, placeholder on web.
+﻿/// Meal thumbnail image widget — loads from local file on mobile, placeholder on web.
 library;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -57,7 +57,7 @@ class MealThumbnail extends StatelessWidget {
     // Try loading from local file on non-web platforms
     if (!kIsWeb && localImagePath != null) {
       return ClipRRect(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(16),
         child: SizedBox(
           width: size,
           height: size,
@@ -66,13 +66,13 @@ class MealThumbnail extends StatelessWidget {
       );
     }
 
-    // Fallback: colored icon
+    // Fallback: colored icon with clay feel
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Icon(_mealTypeIcon(), color: color, size: size * 0.5),

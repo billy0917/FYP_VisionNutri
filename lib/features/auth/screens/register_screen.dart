@@ -1,4 +1,4 @@
-/// SmartDiet AI - Register Screen
+﻿/// SmartDiet AI - Register Screen
 /// 
 /// New user registration screen.
 library;

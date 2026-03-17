@@ -1,10 +1,11 @@
-/// SmartDiet AI - Chat Screen
+﻿/// SmartDiet AI - Chat Screen
 /// 
 /// AI Nutritionist chat interface using FastGPT RAG.
 library;
 
 import 'package:flutter/material.dart';
 import 'package:smart_diet_ai/core/services/api_client.dart';
+import 'package:smart_diet_ai/core/theme/clay_theme.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -25,10 +26,10 @@ class _ChatScreenState extends State<ChatScreen> {
     super.initState();
     // Add welcome message
     _messages.add(ChatMessage(
-      content: "Hello! I'm your AI nutritionist. I can help you with:\n\n"
-          "• Nutrition advice and tips\n"
-          "• Meal planning suggestions\n"
-          "• Understanding your macros\n"
+      content: "Hello! I'm your AI nutritionist. I can help• ou with:\n\n"
+          "• Nutrition ad• ce and tips\n"
+          "• Meal planni•  suggestions\n"
+          "• Understand• g your macros\n"
           "• Answering diet-related questions\n\n"
           "How can I help you today?",
       isUser: false,
@@ -106,19 +107,30 @@ class _ChatScreenState extends State<ChatScreen> {
     return Scaffold(
       body: Column(
         children: [
-          // Chat header
+          // Chat header — clay style
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.primaryContainer,
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? ClayColors.darkSurfaceCard
+                  : ClayColors.surfaceCard,
               borderRadius: const BorderRadius.vertical(
-                bottom: Radius.circular(16),
+                bottom: Radius.circular(24),
               ),
+              boxShadow: [
+                BoxShadow(
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? ClayColors.darkShadowDark
+                      : ClayColors.shadowDark,
+                  offset: const Offset(0, 4),
+                  blurRadius: 12,
+                ),
+              ],
             ),
             child: Row(
               children: [
                 CircleAvatar(
-                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  backgroundColor: ClayColors.primary,
                   child: const Icon(
                     Icons.smart_toy,
                     color: Colors.white,
@@ -191,7 +203,7 @@ class _ChatScreenState extends State<ChatScreen> {
           if (!message.isUser) ...[
             CircleAvatar(
               radius: 16,
-              backgroundColor: Theme.of(context).colorScheme.primary,
+              backgroundColor: ClayColors.primary,
               child: const Icon(
                 Icons.smart_toy,
                 size: 18,
@@ -205,14 +217,32 @@ class _ChatScreenState extends State<ChatScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
                 color: message.isUser
-                    ? Theme.of(context).colorScheme.primary
+                    ? ClayColors.primary
                     : message.isError
-                        ? Colors.red[100]
-                        : Theme.of(context).colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(16).copyWith(
-                  bottomLeft: message.isUser ? null : const Radius.circular(4),
-                  bottomRight: message.isUser ? const Radius.circular(4) : null,
+                        ? ClayColors.error.withValues(alpha: 0.15)
+                        : Theme.of(context).brightness == Brightness.dark
+                            ? ClayColors.darkSurfaceCard
+                            : ClayColors.surfaceCard,
+                borderRadius: BorderRadius.circular(20).copyWith(
+                  bottomLeft: message.isUser ? null : const Radius.circular(6),
+                  bottomRight: message.isUser ? const Radius.circular(6) : null,
                 ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? ClayColors.darkShadowDark
+                        : ClayColors.shadowDark.withValues(alpha: 0.4),
+                    offset: const Offset(3, 3),
+                    blurRadius: 8,
+                  ),
+                  BoxShadow(
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? ClayColors.darkShadowLight.withValues(alpha: 0.2)
+                        : ClayColors.shadowLight.withValues(alpha: 0.7),
+                    offset: const Offset(-2, -2),
+                    blurRadius: 6,
+                  ),
+                ],
               ),
               child: Text(
                 message.content,
@@ -220,7 +250,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   color: message.isUser
                       ? Colors.white
                       : message.isError
-                          ? Colors.red[900]
+                          ? ClayColors.error
                           : null,
                 ),
               ),
@@ -239,7 +269,7 @@ class _ChatScreenState extends State<ChatScreen> {
         children: [
           CircleAvatar(
             radius: 16,
-            backgroundColor: Theme.of(context).colorScheme.primary,
+            backgroundColor: ClayColors.primary,
             child: const Icon(
               Icons.smart_toy,
               size: 18,
@@ -250,10 +280,21 @@ class _ChatScreenState extends State<ChatScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(16).copyWith(
-                bottomLeft: const Radius.circular(4),
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? ClayColors.darkSurfaceCard
+                  : ClayColors.surfaceCard,
+              borderRadius: BorderRadius.circular(20).copyWith(
+                bottomLeft: const Radius.circular(6),
               ),
+              boxShadow: [
+                BoxShadow(
+                  color: Theme.of(context).brightness == Brightness.dark
+                      ? ClayColors.darkShadowDark
+                      : ClayColors.shadowDark.withValues(alpha: 0.4),
+                  offset: const Offset(3, 3),
+                  blurRadius: 8,
+                ),
+              ],
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,

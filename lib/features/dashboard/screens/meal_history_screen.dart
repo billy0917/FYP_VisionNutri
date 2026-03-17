@@ -1,10 +1,11 @@
-/// SmartDiet AI - Meal History Screen
+﻿/// SmartDiet AI - Meal History Screen
 ///
 /// Shows all historical meal records grouped by date.
 library;
 
 import 'package:flutter/material.dart';
 import 'package:smart_diet_ai/core/services/supabase_service.dart';
+import 'package:smart_diet_ai/core/theme/clay_theme.dart';
 import 'package:smart_diet_ai/features/dashboard/widgets/meal_thumbnail.dart';
 
 class MealHistoryScreen extends StatefulWidget {
@@ -303,15 +304,12 @@ class _MealHistoryScreenState extends State<MealHistoryScreen> {
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                decoration: ClayDecoration.badge(color: ClayColors.calorie),
                 child: Text(
                   '$totalCal kcal',
                   style: const TextStyle(
                     fontSize: 12,
-                    color: Colors.orange,
+                    color: ClayColors.calorie,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -331,8 +329,8 @@ class _MealHistoryScreenState extends State<MealHistoryScreen> {
                 alignment: Alignment.centerRight,
                 padding: const EdgeInsets.only(right: 16),
                 decoration: BoxDecoration(
-                  color: Colors.red,
-                  borderRadius: BorderRadius.circular(12),
+                  color: ClayColors.error,
+                  borderRadius: BorderRadius.circular(20),
                 ),
                 child: const Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -364,17 +362,11 @@ class _MealHistoryScreenState extends State<MealHistoryScreen> {
     final fat = (meal['fat'] as num?)?.toDouble() ?? 0.0;
     final localImagePath = meal['local_image_path'] as String?;
     final time = _formatTime(meal['logged_at']);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color:
-              Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.5),
-        ),
-      ),
+      padding: const EdgeInsets.all(12),
+      decoration: ClayDecoration.flat(isDark: isDark, radius: 20),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -411,12 +403,8 @@ class _MealHistoryScreenState extends State<MealHistoryScreen> {
                 const SizedBox(height: 4),
                 Container(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color:
-                        _mealTypeColor(mealType).withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                  decoration: ClayDecoration.badge(color: _mealTypeColor(mealType)),
                   child: Text(
                     _formatMealType(mealType),
                     style: TextStyle(
@@ -427,18 +415,17 @@ class _MealHistoryScreenState extends State<MealHistoryScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                Row(
+                Wrap(
+                  spacing: 5,
+                  runSpacing: 4,
                   children: [
-                    _buildNutrientBadge('$calories', 'kcal', Colors.orange),
-                    const SizedBox(width: 6),
+                    _buildNutrientBadge('$calories', 'kcal', ClayColors.calorie),
                     _buildNutrientBadge(
-                        '${protein.toStringAsFixed(1)}g', 'P', Colors.blue),
-                    const SizedBox(width: 6),
+                        '${protein.toStringAsFixed(1)}g', 'P', ClayColors.protein),
                     _buildNutrientBadge(
-                        '${carbs.toStringAsFixed(1)}g', 'C', Colors.green),
-                    const SizedBox(width: 6),
+                        '${carbs.toStringAsFixed(1)}g', 'C', ClayColors.carbs),
                     _buildNutrientBadge(
-                        '${fat.toStringAsFixed(1)}g', 'F', Colors.red),
+                        '${fat.toStringAsFixed(1)}g', 'F', ClayColors.fat),
                   ],
                 ),
               ],
@@ -451,11 +438,8 @@ class _MealHistoryScreenState extends State<MealHistoryScreen> {
 
   Widget _buildNutrientBadge(String value, String label, Color color) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(6),
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: ClayDecoration.badge(color: color),
       child: Text(
         '$label $value',
         style: TextStyle(
