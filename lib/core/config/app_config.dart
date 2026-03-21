@@ -21,7 +21,13 @@ class AppConfig {
   static const String visionApiUrl = 'https://api.apiplus.org/v1/chat/completions';
   static const String visionApiKey = 'sk-MHOUpYHg1MDV6LG1RjXdxmDoZ7t4ujGwsxzbBociNEw3xsob';
   static const String visionModel = 'gemini-3.1-flash-lite-preview';
-  
+
+  // RAG - Embedding API (same relay, OpenAI-compatible)
+  static const String embeddingApiUrl = 'https://api.apiplus.org/v1/embeddings';
+  static const String embeddingApiKey = 'sk-XSgyv0BxhhHwSGWmgTkJg7wj2fOMcXDgAN0MVW4z8yJEtpE0';
+  static const String embeddingModel = 'text-embedding-3-small';
+  static const int embeddingDimensions = 768;
+
   // Storage bucket names
   static const String foodImagesBucket = 'food-images';
   static const String avatarsBucket = 'avatars';

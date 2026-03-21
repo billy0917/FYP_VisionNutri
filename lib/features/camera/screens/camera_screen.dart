@@ -83,7 +83,7 @@ class _CameraScreenState extends State<CameraScreen> {
     try {
       // Encode image as base64 and send to backend
       final base64Image = base64Encode(_imageBytes!);
-      final result = await ApiClient().analyzeFood(
+      final result = await ApiClient().analyzeFoodWithRag(
         imageBase64: base64Image,
       );
 
@@ -286,11 +286,51 @@ class _CameraScreenState extends State<CameraScreen> {
                 const Icon(Icons.auto_awesome, color: ClayColors.accent),
                 const SizedBox(width: 8),
                 Text(
-                  'AI Analysis',
+                  'Nutrition Analysis',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.bold,
                       ),
                 ),
+                const Spacer(),
+                if (result.dataSource == 'cfs_official')
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade100,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.green.shade400),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.verified, size: 11, color: Colors.green.shade700),
+                        const SizedBox(width: 3),
+                        Text(
+                          '食安中心官方數據',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.green.shade700,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      'AI Estimate',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.blue.shade700,
+                      ),
+                    ),
+                  ),
               ],
             ),
             const SizedBox(height: 16),
@@ -300,6 +340,17 @@ class _CameraScreenState extends State<CameraScreen> {
                     fontWeight: FontWeight.bold,
                   ),
             ),
+            if (result.cfsMatchName != null) ...[  
+              const SizedBox(height: 4),
+              Text(
+                'CFS match: ${result.cfsMatchName}',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.green.shade600,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             // Macros grid
             Row(
