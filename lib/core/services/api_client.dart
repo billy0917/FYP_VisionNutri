@@ -37,7 +37,7 @@ class ApiClient {
 
     final body = jsonEncode({
       'model': AppConfig.visionModel,
-      'max_tokens': 5000,
+      'max_tokens': 10000,
       'temperature': 0.3,
       'messages': [
         {'role': 'system', 'content': _systemPrompt},
@@ -131,21 +131,27 @@ class ApiClient {
   /// Step 3: Gemini Vision (with CFS official data as context) estimates
   ///         portion size → calculates final nutrition.
   Future<FoodAnalysisResult> analyzeFoodWithRag({required String imageBase64}) async {
-    final foodName = await _identifyFoodName(imageBase64);
-    final cfsMatches = await _searchCfsDatabase(foodName);
+    final ragSteps = <RagDebugStep>[];
+    final foodItems = await _identifyFoodName(imageBase64, ragSteps);
+    // Chinese names joined for display and Step 3 context
+    final foodName = foodItems.map((e) => e.$1).join('、');
+    final cfsMatches = await _searchCfsDatabase(foodItems, ragSteps);
     return _analyzeWithContext(
       imageBase64: imageBase64,
       foodName: foodName,
       cfsMatches: cfsMatches,
+      ragSteps: ragSteps,
     );
   }
 
   /// Step 1: Quick food name extraction from image.
-  Future<String> _identifyFoodName(String imageBase64) async {
+  /// Returns a list of (Chinese name, English name) pairs.
+  Future<List<(String chi, String eng)>> _identifyFoodName(
+      String imageBase64, List<RagDebugStep> steps) async {
     try {
       final body = jsonEncode({
         'model': AppConfig.visionModel,
-        'max_tokens': 60,
+        'max_tokens': 8000,
         'temperature': 0.1,
         'messages': [
           {
@@ -153,7 +159,9 @@ class ApiClient {
             'content': [
               {
                 'type': 'text',
-                'text': 'What food is in this image? Reply with ONLY the food name in English. Be concise (e.g. "White Rice", "Fried Chicken Wing"). No explanation.',
+                'text': '圖中是什麼食物？每種食物用「繁體中文|English」格式回答，多種食物用頓號分隔。'
+                    '只回答格式本身，不要其他文字。'
+                    '例子：魚蛋|Fish ball、燒賣|Siu Mai、白飯|Steamed white rice',
               },
               {
                 'type': 'image_url',
@@ -171,45 +179,135 @@ class ApiClient {
           'Authorization': 'Bearer ${AppConfig.visionApiKey}',
         },
         body: body,
-      ).timeout(const Duration(seconds: 15));
+      ).timeout(const Duration(seconds: 60));
 
       if (response.statusCode == 200) {
         final decoded = jsonDecode(response.body);
-        return (decoded['choices'][0]['message']['content'] as String).trim();
+        final raw = (decoded['choices'][0]['message']['content'] as String).trim();
+        // Parse "中文|English、中文|English" format
+        final items = raw
+            .split(RegExp(r'、|,\s*'))
+            .map((s) => s.trim())
+            .where((s) => s.isNotEmpty)
+            .map((s) {
+              final parts = s.split('|');
+              final chi = parts.first.trim();
+              final eng = parts.length > 1 ? parts[1].trim() : chi;
+              return (chi, eng);
+            })
+            .toList();
+        final displayPairs = items.map((e) => '${e.$1} (${e.$2})').join('、');
+        steps.add(RagDebugStep(
+          title: 'Step 1 — Food Identification (${AppConfig.visionModel})',
+          output: displayPairs,
+        ));
+        return items;
       }
-    } catch (_) {}
-    return 'Unknown food';
+    } catch (e) {
+      steps.add(RagDebugStep(
+        title: 'Step 1 — Food Identification',
+        output: 'Error: $e',
+      ));
+    }
+    return [('Unknown food', 'Unknown food')];
   }
 
-  /// Step 2: Embed food name and vector-search CFS Supabase database.
-  Future<List<Map<String, dynamic>>> _searchCfsDatabase(String foodName) async {
+  /// Step 2: Search CFS Supabase database.
+  /// Text search uses Chinese name on food_name_chi.
+  /// Vector search fallback uses English name for better embedding accuracy.
+  Future<List<Map<String, dynamic>>> _searchCfsDatabase(
+      List<(String chi, String eng)> foodItems, List<RagDebugStep> steps) async {
+    final allMatches = <Map<String, dynamic>>[];
+    final debugParts = <String>[];
+    final foodName = foodItems.map((e) => e.$1).join('、');
+
     try {
-      final embedResponse = await http.post(
-        Uri.parse(AppConfig.embeddingApiUrl),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ${AppConfig.embeddingApiKey}',
-        },
-        body: jsonEncode({
-          'model': AppConfig.embeddingModel,
-          'input': foodName,
-          'dimensions': AppConfig.embeddingDimensions,
-        }),
-      ).timeout(const Duration(seconds: 15));
+      for (final item in foodItems) {
+        final chi = item.$1;
+        final eng = item.$2;
 
-      if (embedResponse.statusCode != 200) return [];
+        // --- A) Text search: Chinese name on food_name_chi only ---
+        List<Map<String, dynamic>> hits = [];
+        try {
+          final textHits = await SupabaseService.client
+              .from('cfs_foods')
+              .select('food_id, food_name_chi, food_name_eng, energy_kcal, protein_g, carbohydrate_g, fat_g, serving_size')
+              .ilike('food_name_chi', '%$chi%')
+              .limit(3);
+          hits = List<Map<String, dynamic>>.from(textHits as List? ?? []);
+          if (hits.isNotEmpty) {
+            for (final r in hits) {
+              r['similarity'] = 0.8;
+            }
+            final lines = hits
+                .map((m) => '  ${m['food_name_eng'] ?? '?'} (${m['food_name_chi'] ?? '?'})')
+                .join('\n');
+            debugParts.add('[$chi] text match (chi):\n$lines');
+            allMatches.addAll(hits);
+            continue; // text hit — skip vector
+          }
+        } catch (_) {}
 
-      final embedData = jsonDecode(embedResponse.body);
-      final embedding =
-          (embedData['data'][0]['embedding'] as List).cast<double>();
+        // --- B) Vector search fallback: English name for embedding ---
+        try {
+          final embedResponse = await http.post(
+            Uri.parse(AppConfig.embeddingApiUrl),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ${AppConfig.embeddingApiKey}',
+            },
+            body: jsonEncode({
+              'model': AppConfig.embeddingModel,
+              'input': eng,
+              'dimensions': AppConfig.embeddingDimensions,
+            }),
+          ).timeout(const Duration(seconds: 60));
 
-      final response = await SupabaseService.client.rpc('match_cfs_food', params: {
-        'query_embedding': embedding,
-        'match_count': 3,
-        'match_threshold': 0.6,
-      });
-      return List<Map<String, dynamic>>.from(response as List? ?? []);
-    } catch (_) {
+          if (embedResponse.statusCode == 200) {
+            final embedData = jsonDecode(embedResponse.body);
+            final embedding =
+                (embedData['data'][0]['embedding'] as List).cast<double>();
+            final response = await SupabaseService.client.rpc('match_cfs_food', params: {
+              'query_embedding': embedding,
+              'match_count': 3,
+              'match_threshold': 0.45,
+            });
+            hits = List<Map<String, dynamic>>.from(response as List? ?? []);
+          }
+        } catch (_) {}
+
+        if (hits.isNotEmpty) {
+          final lines = hits.map((m) {
+            final sim = ((m['similarity'] as num? ?? 0) * 100).toStringAsFixed(1);
+            return '  ${m['food_name_eng'] ?? '?'} (${m['food_name_chi'] ?? '?'}) — $sim%';
+          }).join('\n');
+          debugParts.add('[$chi] vector fallback (eng: "$eng"):\n$lines');
+          allMatches.addAll(hits);
+        } else {
+          debugParts.add('[$chi] No matches (text + vector)');
+        }
+      }
+
+      // Deduplicate by food_id, highest similarity first
+      final seen = <dynamic>{};
+      final merged = <Map<String, dynamic>>[];
+      for (final m in allMatches
+        ..sort((a, b) => ((b['similarity'] as num? ?? 0)
+            .compareTo(a['similarity'] as num? ?? 0)))) {
+        if (seen.add(m['food_id'])) merged.add(m);
+        if (merged.length >= 5) break;
+      }
+
+      steps.add(RagDebugStep(
+        title: 'Step 2 — CFS Database Search (text → vector)',
+        output: 'Query: "$foodName"\n${debugParts.join('\n')}',
+      ));
+      return merged;
+    } catch (e) {
+      steps.add(RagDebugStep(
+        title: 'Step 2 — CFS Database Search',
+        output: 'Error: $e',
+      ));
       return [];
     }
   }
@@ -220,6 +318,7 @@ class ApiClient {
     required String imageBase64,
     required String foodName,
     required List<Map<String, dynamic>> cfsMatches,
+    required List<RagDebugStep> ragSteps,
   }) async {
     String systemPrompt;
     String userText;
@@ -228,8 +327,10 @@ class ApiClient {
     if (cfsMatches.isNotEmpty) {
       final cfsContext = cfsMatches.map((m) {
         final name = '${m['food_name_eng'] ?? ''} (${m['food_name_chi'] ?? ''})';
+        final fatVal = m['fat_g'];
+        final fatStr = (fatVal == null || fatVal.toString() == 'null') ? 'not recorded' : '${fatVal}g';
         final per100 = 'Per 100g: ${m['energy_kcal']}kcal, '
-            'protein ${m['protein_g']}g, carbs ${m['carbohydrate_g']}g, fat ${m['fat_g']}g';
+            'protein ${m['protein_g']}g, carbs ${m['carbohydrate_g']}g, fat $fatStr';
         final sim = ((m['similarity'] as num? ?? 0) * 100).toStringAsFixed(0);
         return '$name\n$per100 (match $sim%)';
       }).join('\n\n');
@@ -241,6 +342,7 @@ class ApiClient {
           'Below is official nutrition data from the Hong Kong Centre for Food Safety (CFS) — '
           'all values are PER 100g. Look at the image to estimate the portion weight in grams, '
           'then calculate the total nutrients for that portion. '
+          'If a nutrient value is marked "not recorded", use your nutritional knowledge to estimate it. '
           'Respond ONLY with valid JSON, no markdown, no extra text:\n'
           '{"food_name": "concise name", "calories": integer, "protein": integer, '
           '"carbs": integer, "fat": integer, '
@@ -255,7 +357,7 @@ class ApiClient {
 
     final body = jsonEncode({
       'model': AppConfig.visionModel,
-      'max_tokens': 500,
+      'max_tokens': 10000,
       'temperature': 0.3,
       'messages': [
         {'role': 'system', 'content': systemPrompt},
@@ -297,6 +399,11 @@ class ApiClient {
       if (start != -1 && end != -1) content = content.substring(start, end + 1);
     }
 
+    ragSteps.add(RagDebugStep(
+      title: 'Step 3 — Nutrition Analysis (${AppConfig.visionModel})',
+      output: content,
+    ));
+
     try {
       final result = jsonDecode(content) as Map<String, dynamic>;
       return FoodAnalysisResult(
@@ -308,6 +415,7 @@ class ApiClient {
         reasoning: result['reasoning'] as String? ?? '',
         dataSource: cfsMatches.isNotEmpty ? 'cfs_official' : 'ai_estimate',
         cfsMatchName: cfsMatches.isNotEmpty ? topCfsName : null,
+        ragSteps: ragSteps,
       );
     } catch (_) {
       int? ext(String key) {
@@ -327,6 +435,7 @@ class ApiClient {
         reasoning: '',
         dataSource: cfsMatches.isNotEmpty ? 'cfs_official' : 'ai_estimate',
         cfsMatchName: cfsMatches.isNotEmpty ? topCfsName : null,
+        ragSteps: ragSteps,
       );
     }
   }
@@ -363,6 +472,13 @@ class ApiException implements Exception {
   String toString() => 'ApiException($statusCode): $message';
 }
 
+/// One step of debug output from the RAG pipeline.
+class RagDebugStep {
+  final String title;
+  final String output;
+  RagDebugStep({required this.title, required this.output});
+}
+
 /// Food analysis result model.
 class FoodAnalysisResult {
   final String foodName;
@@ -376,6 +492,8 @@ class FoodAnalysisResult {
   final String dataSource;
   /// The matched CFS food name (English), only set when dataSource == 'cfs_official'.
   final String? cfsMatchName;
+  /// Debug steps from the RAG pipeline, available after analyzeFoodWithRag().
+  final List<RagDebugStep>? ragSteps;
 
   FoodAnalysisResult({
     required this.foodName,
@@ -387,6 +505,7 @@ class FoodAnalysisResult {
     this.confidenceScore,
     this.dataSource = 'ai_estimate',
     this.cfsMatchName,
+    this.ragSteps,
   });
 
   factory FoodAnalysisResult.fromJson(Map<String, dynamic> json) {

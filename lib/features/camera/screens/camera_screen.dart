@@ -380,6 +380,57 @@ class _CameraScreenState extends State<CameraScreen> {
                     ),
               ),
             ],
+            if (result.ragSteps != null && result.ragSteps!.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              const Divider(),
+              Theme(
+                data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                child: ExpansionTile(
+                  tilePadding: EdgeInsets.zero,
+                  dense: true,
+                  title: Text(
+                    '🔍 RAG Pipeline Details',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blueGrey[700],
+                        ),
+                  ),
+                  children: result.ragSteps!.map((step) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          step.title,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blueGrey[600],
+                              ),
+                        ),
+                        const SizedBox(height: 4),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: Colors.grey.shade300),
+                          ),
+                          child: SelectableText(
+                            step.output,
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  fontFamily: 'monospace',
+                                  fontSize: 11,
+                                  color: Colors.grey[800],
+                                ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )).toList(),
+                ),
+              ),
+            ],
           ],
         ),
     );
