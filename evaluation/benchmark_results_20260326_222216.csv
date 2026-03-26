@@ -1,0 +1,51 @@
+﻿food_name_chi,food_name_eng,category,gt_calories,baseline_calories,rag_calories,gt_protein,baseline_protein,rag_protein,gt_carbs,baseline_carbs,rag_carbs,gt_fat,baseline_fat,rag_fat,rag_search_method,rag_cfs_matches
+蒜泥白肉,Sliced Pork with Garlic Sauce,Ready-to-eat foods,310.0,315,310,15.0,18,15,3.0,4,3,0.16,26,27,text,1
+冬蔭功金邊粉（湯底）,Soup,Ready-to-eat foods,55.0,45,55,1.9,2,2,5.3,5,5,0.0074,2,0,text,1
+炸薯條(快餐式，菜油炸),"Fast foods, potato, french fried in vegetable oil",Ready-to-eat foods,319.0,312,319,3.76,3,4,37.51,41,38,4.399,15,17,text,1
+西蘭花炒魚塊,Stir-fried broccoli with fish fillet,Ready-to-eat foods,110.0,95,110,9.6,12,10,2.7,4,3,0.042,3,7,text,1
+椒鹽排骨,Deep fried spare ribs with salt and pepper,Ready-to-eat foods,290.0,385,290,20.0,18,20,6.9,12,7,0.13,30,21,text,1
+芝士撻,Cheese tart,Cereals and cereal products,390.0,380,390,6.6,6,7,31.0,32,31,0.76,26,27,text,1
+白方包 (有皮),with crust,Cereals and cereal products,290.0,265,290,9.4,8,9,46.0,50,46,0.032,4,0,text,1
+黑麥,Rye,Cereals and cereal products,338.0,338,338,10.34,10,10,75.86,76,76,0.0,2,2,text,3
+米小麥棒,Rice and Wheat cereal bar,Cereals and cereal products,409.0,410,409,9.09,7,9,72.73,75,73,0.0,9,9,text,1
+黑麥粉,"Flour, rye",Cereals and cereal products,288.0,325,288,11.4,10,11,54.9,71,55,0.0,2,2,text,2
+牛肉香腸(預先煮熟),"Beef sausage, pre-cooked",Meat and meat products,405.0,285,405,15.5,14,16,0.03,5,0,2.42,24,37,text,1
+羊仔帶骨厚肉塊(瘦肉，生),"Lamb, chop, with bone, chump, lean, raw",Meat and meat products,129.0,175,129,22.5,20,23,0.0,0,0,0.17181,10,4,text,1
+免治豬肉(72%瘦肉/28%肥肉，熟，蘸上麵包糠),"Pork, ground, 72% lean / 28% fat, cooked, crumbles",Meat and meat products,393.0,335,393,22.83,22,23,1.39,0,1,0.256,28,33,text,1
+免治豬肉(72%瘦肉/28%肥肉，平底鍋燒熟),"Pork, ground, 72% lean / 28% fat, cooked, pan-broiled",Meat and meat products,377.0,335,377,22.59,20,23,1.08,0,1,0.229,28,31,text,1
+牛肝(煎熟),"Beef, variety meats and by-products, liver, cooked, pan-fried",Meat and meat products,175.0,191,175,26.52,29,27,5.16,4,5,0.198,5,5,text,1
+牛抽魚肉(蒸，無添加脂肪),"Flathead, flesh, steamed, no added fat",Fish and fish products,116.0,95,116,26.1,20,26,0.0,0,0,0.01672,1,0,text,1
+盲曹魚柳(生),"Barramundi, aquacultured, fillet, raw",Fish and fish products,125.0,98,125,19.2,20,19,0.0,0,0,0.11501,2,5,text,1
+鱲魚柳(蒸，無添加脂肪),"Bream, fillet, steamed, no added fat",Fish and fish products,138.0,105,138,22.4,21,22,0.0,0,0,0.09671,2,0,text,3
+三文魚(煙燻，切片),"Salmon, smoked, sliced",Fish and fish products,187.0,184,187,24.3,25,24,0.0,0,0,0.00909,9,10,text,1
+牛抽魚肉(生),"Flathead, flesh, raw",Fish and fish products,94.0,85,94,21.1,18,21,0.0,0,0,0.01393,1,0,text,1
+雞翼(瘦肉，焗，無添加脂肪),"Chicken, wing, lean flesh, baked, no added fat",Poultry and poultry products,193.0,203,193,30.9,30,31,0.0,0,0,0.04366,9,7,text,1
+雞下腿肉(瘦肉，用焙盤/燉鍋煮，無添加脂肪),"Chicken, drumstick, lean flesh, casseroled, no added fat",Poultry and poultry products,174.0,165,174,28.6,24,29,0.0,0,0,0.03742,7,6,text,1
+雞皮(生),"Chicken, skin, composite, raw",Poultry and poultry products,361.0,450,361,12.7,12,13,0.0,0,0,0.19902,44,33,text,2
+火雞後1/4部分肉(瘦肉，連皮及肥肉，焗，無添加脂肪),"Turkey, hindquarter, lean flesh, skin & fat, baked, no added fat",Poultry and poultry products,217.0,195,217,25.6,24,26,0.0,0,0,0.07298,11,12,text,1
+雞胸肉(烤雞或炸雞用，生),"Chicken, broilers or fryers, breast, meat only, raw",Poultry and poultry products,114.0,120,114,21.23,23,21,0.0,0,0,0.012,3,3,text,1
+雞蛋(全隻，生),"Egg, chicken, whole, raw",Eggs and egg products,127.0,143,127,12.6,13,13,0.3,1,0,0.00988,10,9,text,1
+雞蛋黃(全熟),"Egg, chicken, yolk, hard-boiled",Eggs and egg products,345.0,322,345,16.1,16,16,0.2,4,0,0.03684,27,31,text,1
+雞蛋白(全熟),albumen,Eggs and egg products,49.0,52,49,11.6,11,12,0.4,1,0,0.0,0,0,text,1
+雞蛋(全隻，水煮),"Egg, chicken, whole, poached",Eggs and egg products,132.0,143,132,13.1,13,13,0.3,1,0,0.01029,10,9,text,1
+蛋(全隻，奄列，熟),"Egg, whole, cooked, omelet",Eggs and egg products,157.0,154,157,10.57,11,11,0.69,2,1,0.677,11,12,text,1
+番茄(整個，罐裝，番茄汁浸),"Tomato, whole, canned in tomato juice, undrained",Vegetables and vegetable products,17.0,22,17,0.9,1,1,3.0,4,3,0.0,0,0,text,1
+豆芽,"Sprout, bean, fresh, raw",Vegetables and vegetable products,20.0,30,122,3.1,3,13,1.6,6,10,0.0,0,7,text,3
+茄子(連皮，焗，無添加脂肪),"Eggplant, unpeeled, fresh, baked, no added fat",Vegetables and vegetable products,20.0,35,20,1.3,1,1,3.0,9,3,0.0,0,0,text,1
+紅蘿白(連皮),"Radish, red skinned, unpeeled, raw",Vegetables and vegetable products,13.0,16,13,0.8,1,1,1.9,3,2,0.0,0,0,text,1
+番茄,"Tomato, common, raw",Vegetables and vegetable products,15.0,18,18,0.6,1,1,3.0,4,4,0.0,0,0,text,3
+小扁豆(乾),"Lentil, hulled, dry",Legumes and legume products,289.0,353,289,25.5,26,26,41.8,60,42,0.0,1,0,text,1
+紅腰豆(新鮮),"Bean, red kidney, fresh, raw",Legumes and legume products,116.0,127,116,12.8,9,13,14.7,23,15,0.0,1,0,text,1
+豆(焗，罐裝，原味或素食),"Beans, baked, canned, plain or vegetarian",Legumes and legume products,94.0,90,94,4.75,5,5,21.14,18,21,0.0,0,0,text,1
+海軍豆(烚熟，無添加鹽),"Beans, navy, mature seeds, cooked, boiled, without salt",Legumes and legume products,140.0,139,140,8.23,9,8,26.05,26,26,0.0,1,0,text,1
+荷蘭豆(新鮮),"Snow pea, fresh, raw",Legumes and legume products,32.0,42,32,3.0,3,3,4.7,8,5,0.0,0,0,text,1
+奇異果(海沃德品種，去皮),hayward,Fruits and fruit products,49.0,61,49,1.2,1,1,9.1,15,9,0.0,1,0,text,1
+皺皮瓜(去皮),"Melon, rockmelon, peeled, raw",Fruits and fruit products,22.0,34,22,0.5,1,1,4.7,8,5,0.0,0,0,text,1
+百香果肉(罐裝),"Passionfruit, pulp, canned",Fruits and fruit products,88.0,85,88,1.5,1,2,19.8,20,20,0.0,0,0,text,1
+黃皮蜜瓜(去皮),"Melon, honey dew, yellow skin, peeled, raw",Fruits and fruit products,24.0,36,24,0.8,1,1,4.4,9,4,0.0,0,0,text,1
+橙(巴倫西亞品種，去皮),"Orange, valencia, peeled, raw",Fruits and fruit products,37.0,47,37,1.0,1,1,8.2,12,8,0.0,0,0,text,1
+墨式粟米脆片(焗烤芝士味),"Snacks, tortilla chips, nacho cheese",Snacks,514.0,536,514,8.15,6,8,61.74,58,62,0.216,31,26,text,1
+薯片(添加鹽),"Potato crisps or chips, plain, salted",Snacks,503.0,536,503,6.0,6,6,45.8,53,46,0.10835,35,34,text,3
+爆谷(以微波爐烹煮，牛油味，以部分氫化油製成),butter,Snacks,527.0,510,527,8.69,7,9,55.71,55,56,9.466,30,29,text,1
+水果夾心條(焗),"Bar, snack, fruit filled, baked",Snacks,322.0,380,322,3.9,4,4,71.1,72,71,0.01008,9,0,text,1
+大蕉片(添加鹽),"Snacks, plantain chips, salted",Snacks,531.0,530,531,2.28,2,2,63.84,60,64,0.185,32,30,text,1
