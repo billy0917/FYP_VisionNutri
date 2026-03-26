@@ -1,35 +1,39 @@
-"""
-SmartDiet AI - FastAPI Main Application
-Entry point for the backend API server.
+"""SmartDiet AI — Backend Server
+
+Run with:
+    cd backend
+    uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 """
 
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .core.config import settings
-from .api import vision
+from app.core.config import settings
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan handler for startup/shutdown events."""
-    # Startup
-    print(f"Starting {settings.app_name} v{settings.app_version}")
+    """Pre-load Depth Anything V2 model on startup."""
+    logger.info("Pre-loading Depth Anything V2 model …")
+    from app.services.depth_service import DepthService
+
+    DepthService.get_instance()
+    logger.info("All models loaded — server ready.")
     yield
-    # Shutdown
-    print("Shutting down...")
 
 
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
-    description="AI-powered personalized nutrition ecosystem",
     lifespan=lifespan,
 )
 
-# Configure CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -38,34 +42,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from app.api.volume import router as volume_router  # noqa: E402
 
-@app.get("/")
-async def root():
-    """Health check endpoint."""
-    return {
-        "name": settings.app_name,
-        "version": settings.app_version,
-        "status": "healthy",
-    }
+app.include_router(volume_router, prefix="/api/v1")
 
 
 @app.get("/health")
-async def health_check():
-    """Detailed health check endpoint."""
-    return {
-        "status": "healthy",
-        "services": {
-            "api": "operational",
-            "database": "operational",  # TODO: Add actual DB check
-            "vision_ai": "operational",  # TODO: Add actual service check
-            "rag": "operational",  # TODO: Add actual service check
-        }
-    }
-
-
-# Routers
-app.include_router(vision.router)
-
-# TODO: add more routers as features are developed
-# app.include_router(chat.router)
-# app.include_router(recipes.router)
+async def health():
+    return {"status": "ok", "version": settings.app_version}

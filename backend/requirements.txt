@@ -28,3 +28,8 @@ aiohttp==3.9.3
 
 # Utilities
 python-multipart==0.0.9  # For file uploads
+
+# Depth Estimation (Depth Anything V2)
+torch>=2.0.0
+transformers>=4.35.0
+numpy>=1.24.0

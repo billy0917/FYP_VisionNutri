@@ -8,6 +8,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:exif/exif.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:smart_diet_ai/core/services/api_client.dart';
 import 'package:smart_diet_ai/core/services/supabase_service.dart';
@@ -32,6 +33,7 @@ class _CameraScreenState extends State<CameraScreen> {
   bool _isAnalyzing = false;
   FoodAnalysisResult? _analysisResult;
   String? _selectedMealType;
+  String? _cameraInfo;  // EXIF-derived description for LLM
 
   final List<String> _mealTypes = ['Breakfast', 'Lunch', 'Dinner', 'Snack'];
 
@@ -48,6 +50,9 @@ class _CameraScreenState extends State<CameraScreen> {
         // Read image bytes
         final bytes = await image.readAsBytes();
         
+        // Extract EXIF metadata for the LLM
+        final camInfo = await _extractCameraInfo(bytes);
+        
         // Save to local app directory
         final localPath = await _saveImageLocally(bytes);
         
@@ -55,6 +60,7 @@ class _CameraScreenState extends State<CameraScreen> {
           _imageBytes = bytes;
           _localImagePath = localPath;
           _analysisResult = null;
+          _cameraInfo = camInfo;
         });
       }
     } catch (e) {
@@ -81,10 +87,11 @@ class _CameraScreenState extends State<CameraScreen> {
     setState(() => _isAnalyzing = true);
 
     try {
-      // Encode image as base64 and send to backend
+      // Encode image as base64 and send to AI
       final base64Image = base64Encode(_imageBytes!);
       final result = await ApiClient().analyzeFoodWithRag(
         imageBase64: base64Image,
+        cameraInfo: _cameraInfo,
       );
 
       setState(() {
@@ -157,7 +164,54 @@ class _CameraScreenState extends State<CameraScreen> {
       _imageBytes = null;
       _analysisResult = null;
       _selectedMealType = null;
+      _cameraInfo = null;
     });
+  }
+
+  /// Extract useful EXIF camera metadata and format as a one-line LLM context.
+  Future<String?> _extractCameraInfo(Uint8List bytes) async {
+    try {
+      final tags = await readExifFromBytes(bytes);
+      if (tags.isEmpty) return null;
+
+      final parts = <String>[];
+
+      // Focal length (actual mm)
+      final fl = tags['EXIF FocalLength'];
+      if (fl != null) parts.add('focal length ${fl}mm');
+
+      // 35mm equivalent focal length
+      final fl35 = tags['EXIF FocalLengthIn35mmFilm'];
+      if (fl35 != null) parts.add('35mm equiv ${fl35}mm');
+
+      // Aperture
+      final fNum = tags['EXIF FNumber'];
+      if (fNum != null) parts.add('f/$fNum');
+
+      // ISO
+      final iso = tags['EXIF ISOSpeedRatings'];
+      if (iso != null) parts.add('ISO $iso');
+
+      // Image dimensions
+      final w = tags['EXIF ExifImageWidth'] ?? tags['Image ImageWidth'];
+      final h = tags['EXIF ExifImageLength'] ?? tags['Image ImageLength'];
+      if (w != null && h != null) parts.add('${w}×${h}px');
+
+      // Camera make/model
+      final make = tags['Image Make'];
+      final model = tags['Image Model'];
+      if (make != null || model != null) {
+        parts.add('${make ?? ''} ${model ?? ''}'.trim());
+      }
+
+      // Subject distance (if available — rare but very useful)
+      final dist = tags['EXIF SubjectDistance'];
+      if (dist != null) parts.add('subject distance ${dist}m');
+
+      return parts.isEmpty ? null : parts.join(', ');
+    } catch (_) {
+      return null;
+    }
   }
 
   @override

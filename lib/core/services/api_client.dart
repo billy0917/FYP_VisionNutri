@@ -14,12 +14,15 @@ class ApiClient {
   ApiClient._internal();
 
   static const String _systemPrompt =
-      'You are an expert nutritionist AI. Analyze the food in the image and '
-      'respond ONLY with a valid JSON object (no markdown, no extra text) in this exact format: '
+      'You are an expert nutritionist AI. Analyze the food in the image. '
+      'First estimate each food item\'s physical dimensions (L×W×H cm) using perspective cues, '
+      'plate/bowl/container size, and common object knowledge. '
+      'Then estimate volume (mL) and convert to weight using typical food density '
+      '(rice ~1.1g/mL, soup ~1.0, meat ~1.05, bread ~0.35, vegetables ~0.6). '
+      'Respond ONLY with a valid JSON object (no markdown, no extra text) in this exact format: '
       '{"food_name": "name", "calories": 0, "protein": 0, "carbs": 0, "fat": 0, '
-      '"reasoning": "brief explanation"}. '
-      'All numeric values must be integers. Be conservative when unsure. '
-      'The reasoning field MUST be 50 words or fewer.';
+      '"reasoning": "dims ~LxWxH cm → ~V mL → ~Wg"}. '
+      'All numeric values must be integers.';
 
   /// Analyze a food image directly via AI API — no local server needed.
   Future<FoodAnalysisResult> analyzeFood({
@@ -128,10 +131,21 @@ class ApiClient {
   ///
   /// Step 1: Gemini Vision quickly identifies food name from image.
   /// Step 2: text-embedding-3-small embeds name → searches CFS Supabase DB.
-  /// Step 3: Gemini Vision (with CFS official data as context) estimates
-  ///         portion size → calculates final nutrition.
-  Future<FoodAnalysisResult> analyzeFoodWithRag({required String imageBase64}) async {
+  /// Step 3: Gemini Vision (with CFS official data + dimension estimation
+  ///         instructions) estimates portion size → calculates final nutrition.
+  Future<FoodAnalysisResult> analyzeFoodWithRag({
+    required String imageBase64,
+    String? cameraInfo,
+  }) async {
     final ragSteps = <RagDebugStep>[];
+
+    if (cameraInfo != null && cameraInfo.isNotEmpty) {
+      ragSteps.add(RagDebugStep(
+        title: 'Camera EXIF Metadata',
+        output: cameraInfo,
+      ));
+    }
+
     final foodItems = await _identifyFoodName(imageBase64, ragSteps);
     // Chinese names joined for display and Step 3 context
     final foodName = foodItems.map((e) => e.$1).join('、');
@@ -141,6 +155,7 @@ class ApiClient {
       foodName: foodName,
       cfsMatches: cfsMatches,
       ragSteps: ragSteps,
+      cameraInfo: cameraInfo,
     );
   }
 
@@ -319,6 +334,7 @@ class ApiClient {
     required String foodName,
     required List<Map<String, dynamic>> cfsMatches,
     required List<RagDebugStep> ragSteps,
+    String? cameraInfo,
   }) async {
     String systemPrompt;
     String userText;
@@ -337,16 +353,30 @@ class ApiClient {
 
       topCfsName = cfsMatches.first['food_name_eng'] as String? ?? foodName;
 
+      final camLine = (cameraInfo != null && cameraInfo.isNotEmpty)
+          ? 'Camera metadata: $cameraInfo. '
+          : 'Photo taken by a typical smartphone. ';
+
       systemPrompt =
-          'You are a precise nutritionist. The photo shows "$foodName". '
+          'You are a precise nutritionist with expertise in estimating food portions from photos. '
+          'The photo shows "$foodName". '
+          '$camLine'
+          'Use the focal length and any available sensor data to judge the field of view and '
+          'real-world scale of objects in the frame. '
           'Below is official nutrition data from the Hong Kong Centre for Food Safety (CFS) — '
-          'all values are PER 100g. Look at the image to estimate the portion weight in grams, '
-          'then calculate the total nutrients for that portion. '
-          'If a nutrient value is marked "not recorded", use your nutritional knowledge to estimate it. '
+          'all values are PER 100g.\n\n'
+          'STEP-BY-STEP:\n'
+          '1. MEASURE: Estimate each food item\'s physical dimensions (length × width × height in cm) '
+          'using perspective cues, plate/bowl/container size, and common object knowledge.\n'
+          '2. VOLUME: From the dimensions, estimate the food volume in mL or cm³.\n'
+          '3. WEIGHT: Convert volume to weight using typical food density '
+          '(e.g. rice ~1.1 g/mL, soup ~1.0, meat ~1.05, bread ~0.35, vegetables ~0.6).\n'
+          '4. NUTRITION: Use the CFS per-100g data to calculate total nutrients.\n\n'
+          'If a nutrient value is marked "not recorded", estimate it from nutritional knowledge. '
           'Respond ONLY with valid JSON, no markdown, no extra text:\n'
           '{"food_name": "concise name", "calories": integer, "protein": integer, '
           '"carbs": integer, "fat": integer, '
-          '"reasoning": "CFS: [name], ~Xg portion estimated"}';
+          '"reasoning": "dims ~LxWxH cm → ~V mL → ~Wg, CFS: [name]"}';
 
       userText = 'CFS official nutrition data (per 100g):\n$cfsContext\n\n'
           'Estimate the portion from the image and calculate total nutrition.';

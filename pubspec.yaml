@@ -23,6 +23,9 @@ dependencies:
   # Image Picker (for camera/gallery access)
   image_picker: ^1.1.2
   
+  # EXIF metadata extraction from photos
+  exif: ^3.3.0
+  
   # Local file storage
   path_provider: ^2.1.5
   
