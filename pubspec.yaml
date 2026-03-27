@@ -19,12 +19,24 @@ dependencies:
   
   # HTTP Client
   http: ^1.2.2
+
+  # On-device ONNX inference for MobileSAM-style segmentation
+  onnxruntime: ^1.4.1
+
+  # Image decoding and tensor preprocessing
+  image: ^4.5.4
   
   # Image Picker (for camera/gallery access)
   image_picker: ^1.1.2
   
   # EXIF metadata extraction from photos
   exif: ^3.3.0
+  
+  # ARCore (plane hit-test measurement, Kang et al. 2024 approach)
+  arcore_flutter_plugin: ^0.1.0
+
+  # 3D vector math for AR geometry calculations
+  vector_math: ^2.1.4
   
   # Local file storage
   path_provider: ^2.1.5
@@ -50,6 +62,9 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  assets:
+    - assets/models/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

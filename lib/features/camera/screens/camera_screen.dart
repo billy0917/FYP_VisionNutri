@@ -1,10 +1,11 @@
 ﻿/// SmartDiet AI - Camera Screen
-/// 
+///
 /// Screen for capturing food images and getting AI analysis.
 library;
 
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -12,7 +13,9 @@ import 'package:exif/exif.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:smart_diet_ai/core/services/api_client.dart';
 import 'package:smart_diet_ai/core/services/supabase_service.dart';
+import 'package:smart_diet_ai/core/services/volume_service.dart';
 import 'package:smart_diet_ai/core/theme/clay_theme.dart';
+import 'package:smart_diet_ai/features/camera/screens/ar_measure_screen.dart';
 
 // dart:io is only used on non-web platforms
 import 'package:smart_diet_ai/features/camera/screens/camera_io_helper.dart'
@@ -29,11 +32,15 @@ class CameraScreen extends StatefulWidget {
 class _CameraScreenState extends State<CameraScreen> {
   final ImagePicker _picker = ImagePicker();
   Uint8List? _imageBytes;
-  String? _localImagePath;  // null on web
+  String? _localImagePath; // null on web
   bool _isAnalyzing = false;
+  bool _isPreparingSegmentation = false;
   FoodAnalysisResult? _analysisResult;
   String? _selectedMealType;
-  String? _cameraInfo;  // EXIF-derived description for LLM
+  String? _cameraInfo; // EXIF-derived description for LLM
+  ArMeasurement? _arMeasurement; // ARCore measurement result
+  VolumeEstimationResult? _segmentationResult;
+  double? _previewAspectRatio;
 
   final List<String> _mealTypes = ['Breakfast', 'Lunch', 'Dinner', 'Snack'];
 
@@ -49,19 +56,32 @@ class _CameraScreenState extends State<CameraScreen> {
       if (image != null) {
         // Read image bytes
         final bytes = await image.readAsBytes();
-        
+
         // Extract EXIF metadata for the LLM
         final camInfo = await _extractCameraInfo(bytes);
-        
+
         // Save to local app directory
         final localPath = await _saveImageLocally(bytes);
-        
+
         setState(() {
           _imageBytes = bytes;
           _localImagePath = localPath;
           _analysisResult = null;
+          _selectedMealType = null;
           _cameraInfo = camInfo;
+          _arMeasurement = null;
+          _segmentationResult = null;
+          _previewAspectRatio = null;
         });
+
+        final aspectRatio = await _readImageAspectRatio(bytes);
+        if (mounted && _imageBytes == bytes) {
+          setState(() {
+            _previewAspectRatio = aspectRatio;
+          });
+        }
+
+        await _prepareSegmentationPreview(bytes);
       }
     } catch (e) {
       if (mounted) {
@@ -81,6 +101,45 @@ class _CameraScreenState extends State<CameraScreen> {
     return saveImageToLocalStorage(bytes);
   }
 
+  Future<void> _prepareSegmentationPreview(Uint8List bytes) async {
+    setState(() {
+      _isPreparingSegmentation = true;
+    });
+
+    try {
+      final result = await VolumeService().estimateVolume(imageBytes: bytes);
+      if (!mounted || _imageBytes != bytes) {
+        return;
+      }
+      setState(() {
+        _segmentationResult = result.hasEstimate ? result : null;
+      });
+    } catch (_) {
+      if (!mounted || _imageBytes != bytes) {
+        return;
+      }
+      setState(() {
+        _segmentationResult = null;
+      });
+    } finally {
+      if (mounted && _imageBytes == bytes) {
+        setState(() {
+          _isPreparingSegmentation = false;
+        });
+      }
+    }
+  }
+
+  Future<double> _readImageAspectRatio(Uint8List bytes) async {
+    final buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
+    try {
+      final descriptor = await ui.ImageDescriptor.encoded(buffer);
+      return descriptor.width / descriptor.height;
+    } finally {
+      buffer.dispose();
+    }
+  }
+
   Future<void> _analyzeImage() async {
     if (_imageBytes == null) return;
 
@@ -89,13 +148,29 @@ class _CameraScreenState extends State<CameraScreen> {
     try {
       // Encode image as base64 and send to AI
       final base64Image = base64Encode(_imageBytes!);
+
+      // Build combined camera context
+      String? fullCameraInfo;
+      final parts = <String>[];
+      if (_cameraInfo != null) parts.add(_cameraInfo!);
+      final onDeviceSegmentation =
+          _segmentationResult ??
+          await VolumeService().estimateVolume(imageBytes: _imageBytes!);
+      final segmentationContext = onDeviceSegmentation.toPromptContext();
+      if (segmentationContext.isNotEmpty) parts.add(segmentationContext);
+      if (_arMeasurement != null) parts.add(_arMeasurement!.toPromptContext());
+      if (parts.isNotEmpty) fullCameraInfo = parts.join('. ');
+
       final result = await ApiClient().analyzeFoodWithRag(
         imageBase64: base64Image,
-        cameraInfo: _cameraInfo,
+        cameraInfo: fullCameraInfo,
       );
 
       setState(() {
         _analysisResult = result;
+        if (onDeviceSegmentation.hasEstimate) {
+          _segmentationResult = onDeviceSegmentation;
+        }
       });
     } catch (e) {
       if (mounted) {
@@ -165,6 +240,9 @@ class _CameraScreenState extends State<CameraScreen> {
       _analysisResult = null;
       _selectedMealType = null;
       _cameraInfo = null;
+      _arMeasurement = null;
+      _segmentationResult = null;
+      _previewAspectRatio = null;
     });
   }
 
@@ -195,7 +273,7 @@ class _CameraScreenState extends State<CameraScreen> {
       // Image dimensions
       final w = tags['EXIF ExifImageWidth'] ?? tags['Image ImageWidth'];
       final h = tags['EXIF ExifImageLength'] ?? tags['Image ImageLength'];
-      if (w != null && h != null) parts.add('${w}×${h}px');
+      if (w != null && h != null) parts.add('$w×${h}px');
 
       // Camera make/model
       final make = tags['Image Make'];
@@ -246,6 +324,7 @@ class _CameraScreenState extends State<CameraScreen> {
 
   Widget _buildImageSection() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final previewAspectRatio = _previewAspectRatio ?? 4 / 3;
     return Container(
       decoration: ClayDecoration.card(isDark: isDark),
       clipBehavior: Clip.antiAlias,
@@ -253,33 +332,95 @@ class _CameraScreenState extends State<CameraScreen> {
         children: [
           // Image preview or placeholder
           Container(
-            height: 250,
             width: double.infinity,
             decoration: BoxDecoration(
               color: isDark ? ClayColors.darkSurface : ClayColors.surfaceDim,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(24),
+              ),
             ),
             child: _imageBytes != null
-                ? Image.memory(
-                    _imageBytes!,
-                    fit: BoxFit.cover,
+                ? Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: AspectRatio(
+                      aspectRatio: previewAspectRatio,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(18),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: isDark
+                                    ? ClayColors.darkSurface
+                                    : Colors.white.withAlpha(217),
+                              ),
+                              child: Image.memory(
+                                _imageBytes!,
+                                fit: BoxFit.contain,
+                              ),
+                            ),
+                            if (_segmentationResult?.hasMaskOverlay ?? false)
+                              IgnorePointer(
+                                child: Image.memory(
+                                  _segmentationResult!.maskOverlayPngBytes!,
+                                  fit: BoxFit.contain,
+                                ),
+                              ),
+                            if (_isPreparingSegmentation)
+                              Container(
+                                color: Colors.black.withAlpha(72),
+                                alignment: Alignment.center,
+                                child: const Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    SizedBox(
+                                      width: 28,
+                                      height: 28,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2.5,
+                                      ),
+                                    ),
+                                    SizedBox(height: 10),
+                                    Text(
+                                      'Generating mask preview...',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
                   )
-                : Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.camera_alt_outlined,
-                        size: 64,
-                        color: Colors.grey[400],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Take a photo of your food',
-                        style: TextStyle(color: Colors.grey[600]),
-                      ),
-                    ],
+                : SizedBox(
+                    height: 250,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.camera_alt_outlined,
+                          size: 64,
+                          color: Colors.grey[400],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Take a photo of your food',
+                          style: TextStyle(color: Colors.grey[600]),
+                        ),
+                      ],
+                    ),
                   ),
           ),
+          if (_imageBytes != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+              child: _buildSegmentationStatus(),
+            ),
           // Action buttons
           Padding(
             padding: const EdgeInsets.all(16),
@@ -304,6 +445,24 @@ class _CameraScreenState extends State<CameraScreen> {
               ],
             ),
           ),
+          // Measurement button (shown after photo is taken)
+          if (_imageBytes != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: OutlinedButton.icon(
+                onPressed: _launchMeasure,
+                icon: const Icon(Icons.straighten, color: Colors.deepPurple),
+                label: Text(
+                  _arMeasurement == null
+                      ? '📏 尺寸量測 Size Measurement (optional)'
+                      : '📏 重新量測 Re-measure',
+                  style: const TextStyle(color: Colors.deepPurple),
+                ),
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: Colors.deepPurple),
+                ),
+              ),
+            ),
           // Analyze button
           if (_imageBytes != null && _analysisResult == null)
             Padding(
@@ -320,7 +479,89 @@ class _CameraScreenState extends State<CameraScreen> {
                 label: Text(_isAnalyzing ? 'Analyzing...' : 'Analyze with AI'),
               ),
             ),
+
+          // Measurement display
+          if (_arMeasurement != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.deepPurple.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.deepPurple.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.straighten,
+                      color: Colors.deepPurple.shade600,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '${_arMeasurement!.widthCm?.toStringAsFixed(1)} × '
+                        '${_arMeasurement!.lengthCm?.toStringAsFixed(1)} × '
+                        '${_arMeasurement!.heightCm?.toStringAsFixed(1)} cm  →  '
+                        '~${_arMeasurement!.volumeMl?.round()} mL',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.deepPurple.shade700,
+                        ),
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: () => setState(() => _arMeasurement = null),
+                      child: Icon(
+                        Icons.close,
+                        size: 16,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSegmentationStatus() {
+    final result = _segmentationResult;
+    if (_isPreparingSegmentation) {
+      return const Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          'Mask preview is being prepared on-device.',
+          style: TextStyle(fontSize: 12, color: Colors.grey),
+        ),
+      );
+    }
+
+    if (result == null || !result.hasEstimate) {
+      return const Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          'No usable mask was detected for this image.',
+          style: TextStyle(fontSize: 12, color: Colors.grey),
+        ),
+      );
+    }
+
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Text(
+        'Mask preview: ${result.confidence} confidence, ${(result.foodPixelRatio * 100).toStringAsFixed(0)}% foreground coverage.',
+        style: TextStyle(
+          fontSize: 12,
+          color: result.confidence == 'high'
+              ? Colors.green.shade700
+              : Colors.blueGrey.shade700,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
@@ -328,165 +569,195 @@ class _CameraScreenState extends State<CameraScreen> {
   Widget _buildAnalysisResultCard() {
     final result = _analysisResult!;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+
     return Container(
       decoration: ClayDecoration.card(isDark: isDark),
       padding: const EdgeInsets.all(20),
       child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.auto_awesome, color: ClayColors.accent),
-                const SizedBox(width: 8),
-                Text(
-                  'Nutrition Analysis',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                ),
-                const Spacer(),
-                if (result.dataSource == 'cfs_official')
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: Colors.green.shade100,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.green.shade400),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.verified, size: 11, color: Colors.green.shade700),
-                        const SizedBox(width: 3),
-                        Text(
-                          '食安中心官方數據',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: Colors.green.shade700,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                else
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.shade50,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      'AI Estimate',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: Colors.blue.shade700,
-                      ),
-                    ),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.auto_awesome, color: ClayColors.accent),
+              const SizedBox(width: 8),
+              Text(
+                'Nutrition Analysis',
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const Spacer(),
+              if (result.dataSource == 'cfs_official')
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
                   ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Text(
-              result.foodName,
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade100,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.green.shade400),
                   ),
-            ),
-            if (result.cfsMatchName != null) ...[  
-              const SizedBox(height: 4),
-              Text(
-                'CFS match: ${result.cfsMatchName}',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.green.shade600,
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-            ],
-            const SizedBox(height: 16),
-            // Macros grid
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildMacroItem('Calories', '${result.calories}', 'kcal', ClayColors.calorie),
-                _buildMacroItem('Protein', '${result.protein}', 'g', ClayColors.protein),
-                _buildMacroItem('Carbs', '${result.carbs}', 'g', ClayColors.carbs),
-                _buildMacroItem('Fat', '${result.fat}', 'g', ClayColors.fat),
-              ],
-            ),
-            if (result.reasoning.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              const Divider(),
-              const SizedBox(height: 8),
-              Text(
-                'AI Reasoning:',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                result.reasoning,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Colors.grey[600],
-                    ),
-              ),
-            ],
-            if (result.ragSteps != null && result.ragSteps!.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              const Divider(),
-              Theme(
-                data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-                child: ExpansionTile(
-                  tilePadding: EdgeInsets.zero,
-                  dense: true,
-                  title: Text(
-                    '🔍 RAG Pipeline Details',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.verified,
+                        size: 11,
+                        color: Colors.green.shade700,
+                      ),
+                      const SizedBox(width: 3),
+                      Text(
+                        '食安中心官方數據',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Colors.green.shade700,
                           fontWeight: FontWeight.bold,
-                          color: Colors.blueGrey[700],
                         ),
+                      ),
+                    ],
                   ),
-                  children: result.ragSteps!.map((step) => Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          step.title,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.blueGrey[600],
-                              ),
-                        ),
-                        const SizedBox(height: 4),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade100,
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: Colors.grey.shade300),
-                          ),
-                          child: SelectableText(
-                            step.output,
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                  fontFamily: 'monospace',
-                                  fontSize: 11,
-                                  color: Colors.grey[800],
-                                ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  )).toList(),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    'AI Estimate',
+                    style: TextStyle(fontSize: 10, color: Colors.blue.shade700),
+                  ),
                 ),
-              ),
             ],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            result.foodName,
+            style: Theme.of(
+              context,
+            ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+          ),
+          if (result.cfsMatchName != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              'CFS match: ${result.cfsMatchName}',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.green.shade600,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
           ],
-        ),
+          const SizedBox(height: 16),
+          // Macros grid
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildMacroItem(
+                'Calories',
+                '${result.calories}',
+                'kcal',
+                ClayColors.calorie,
+              ),
+              _buildMacroItem(
+                'Protein',
+                '${result.protein}',
+                'g',
+                ClayColors.protein,
+              ),
+              _buildMacroItem(
+                'Carbs',
+                '${result.carbs}',
+                'g',
+                ClayColors.carbs,
+              ),
+              _buildMacroItem('Fat', '${result.fat}', 'g', ClayColors.fat),
+            ],
+          ),
+          if (result.reasoning.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            const Divider(),
+            const SizedBox(height: 8),
+            Text(
+              'AI Reasoning:',
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              result.reasoning,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
+            ),
+          ],
+          if (result.ragSteps != null && result.ragSteps!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            const Divider(),
+            Theme(
+              data: Theme.of(
+                context,
+              ).copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                tilePadding: EdgeInsets.zero,
+                dense: true,
+                title: Text(
+                  '🔍 RAG Pipeline Details',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blueGrey[700],
+                  ),
+                ),
+                children: result.ragSteps!
+                    .map(
+                      (step) => Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              step.title,
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.blueGrey[600],
+                                  ),
+                            ),
+                            const SizedBox(height: 4),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade100,
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: Colors.grey.shade300),
+                              ),
+                              child: SelectableText(
+                                step.output,
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(
+                                      fontFamily: 'monospace',
+                                      fontSize: 11,
+                                      color: Colors.grey[800],
+                                    ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -501,18 +772,9 @@ class _CameraScreenState extends State<CameraScreen> {
             color: color,
           ),
         ),
-        Text(
-          unit,
-          style: TextStyle(
-            fontSize: 12,
-            color: Colors.grey[600],
-          ),
-        ),
+        Text(unit, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
         const SizedBox(height: 4),
-        Text(
-          label,
-          style: const TextStyle(fontSize: 12),
-        ),
+        Text(label, style: const TextStyle(fontSize: 12)),
       ],
     );
   }
@@ -523,39 +785,53 @@ class _CameraScreenState extends State<CameraScreen> {
       decoration: ClayDecoration.card(isDark: isDark),
       padding: const EdgeInsets.all(20),
       child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Meal Type',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Meal Type',
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            children: _mealTypes.map((type) {
+              final isSelected = _selectedMealType == type;
+              return ChoiceChip(
+                label: Text(
+                  type[0].toUpperCase() + type.substring(1),
+                  style: TextStyle(
+                    color: isSelected ? Colors.white : ClayColors.primaryDeep,
+                    fontWeight: FontWeight.w600,
                   ),
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              children: _mealTypes.map((type) {
-                final isSelected = _selectedMealType == type;
-                return ChoiceChip(
-                  label: Text(
-                    type[0].toUpperCase() + type.substring(1),
-                    style: TextStyle(
-                      color: isSelected ? Colors.white : ClayColors.primaryDeep,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  selected: isSelected,
-                  selectedColor: Theme.of(context).colorScheme.primary,
-                  onSelected: (selected) {
-                    setState(() {
-                      _selectedMealType = selected ? type : null;
-                    });
-                  },
-                );
-              }).toList(),
-            ),
-          ],
-        ),
+                ),
+                selected: isSelected,
+                selectedColor: Theme.of(context).colorScheme.primary,
+                onSelected: (selected) {
+                  setState(() {
+                    _selectedMealType = selected ? type : null;
+                  });
+                },
+              );
+            }).toList(),
+          ),
+        ],
+      ),
     );
+  }
+
+  /// Launch the AR measurement screen.
+  Future<void> _launchMeasure() async {
+    final result = await Navigator.of(context).push<FoodMeasurement>(
+      MaterialPageRoute(builder: (_) => const ArMeasureScreen()),
+    );
+    if (result != null && mounted) {
+      setState(() {
+        _arMeasurement = result;
+        _analysisResult = null;
+        _selectedMealType = null;
+      });
+    }
   }
 }

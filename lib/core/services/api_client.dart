@@ -357,6 +357,17 @@ class ApiClient {
           ? 'Camera metadata: $cameraInfo. '
           : 'Photo taken by a typical smartphone. ';
 
+      // Detect ARCore-measured dimensions to give a more specific instruction.
+      final hasArMeasure = cameraInfo != null &&
+          cameraInfo.contains('ARCore-measured');
+
+      final measureStep = hasArMeasure
+          ? '1. MEASURE: The food\'s physical bounding-box dimensions were measured with ARCore '
+            '(see the camera metadata). Use them directly. Note: actual food volume is '
+            'typically 50-70% of the rectangular bounding box.\n'
+          : '1. MEASURE: Estimate each food item\'s physical dimensions (length × width × height in cm) '
+            'using perspective cues, plate/bowl/container size, and common object knowledge.\n';
+
       systemPrompt =
           'You are a precise nutritionist with expertise in estimating food portions from photos. '
           'The photo shows "$foodName". '
@@ -366,8 +377,7 @@ class ApiClient {
           'Below is official nutrition data from the Hong Kong Centre for Food Safety (CFS) — '
           'all values are PER 100g.\n\n'
           'STEP-BY-STEP:\n'
-          '1. MEASURE: Estimate each food item\'s physical dimensions (length × width × height in cm) '
-          'using perspective cues, plate/bowl/container size, and common object knowledge.\n'
+          '$measureStep'
           '2. VOLUME: From the dimensions, estimate the food volume in mL or cm³.\n'
           '3. WEIGHT: Convert volume to weight using typical food density '
           '(e.g. rice ~1.1 g/mL, soup ~1.0, meat ~1.05, bread ~0.35, vegetables ~0.6).\n'

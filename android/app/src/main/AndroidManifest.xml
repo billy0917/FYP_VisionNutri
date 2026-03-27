@@ -1,8 +1,17 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.CAMERA"/>
+
+    <!-- ARCore: optional so the app still installs on non-AR devices -->
+    <uses-feature android:name="android.hardware.camera.ar" android:required="false"/>
+
     <application
         android:label="smart_diet_ai"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+
+        <!-- ARCore metadata (required = optional keeps Play Store listing broad) -->
+        <meta-data android:name="com.google.ar.core" android:value="optional"/>
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
