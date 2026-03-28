@@ -12,6 +12,7 @@ import 'package:smart_diet_ai/features/chat/screens/chat_screen.dart';
 import 'package:smart_diet_ai/features/food_entry/screens/manual_food_entry_screen.dart';
 import 'package:smart_diet_ai/features/dashboard/widgets/meal_thumbnail.dart';
 import 'package:smart_diet_ai/features/dashboard/screens/meal_history_screen.dart';
+import 'package:smart_diet_ai/features/profile/screens/profile_screen.dart';
 import 'package:smart_diet_ai/features/settings/screens/settings_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -53,7 +54,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
           IconButton(
             icon: const Icon(Icons.person_outline),
             onPressed: () {
-              // TODO: Navigate to profile
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ProfileScreen()),
+              );
             },
           ),
           PopupMenuButton<String>(
