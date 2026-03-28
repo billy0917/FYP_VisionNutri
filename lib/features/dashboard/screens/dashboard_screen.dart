@@ -12,6 +12,7 @@ import 'package:smart_diet_ai/features/chat/screens/chat_screen.dart';
 import 'package:smart_diet_ai/features/food_entry/screens/manual_food_entry_screen.dart';
 import 'package:smart_diet_ai/features/dashboard/widgets/meal_thumbnail.dart';
 import 'package:smart_diet_ai/features/dashboard/screens/meal_history_screen.dart';
+import 'package:smart_diet_ai/features/settings/screens/settings_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -57,7 +58,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           PopupMenuButton<String>(
             onSelected: (value) async {
-              if (value == 'logout') {
+              if (value == 'settings') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                );
+              } else if (value == 'logout') {
                 await SupabaseService.signOut();
                 if (mounted) {
                   Navigator.of(context).pushReplacement(

@@ -47,6 +47,12 @@ dependencies:
   # Local Storage
   shared_preferences: ^2.3.4
 
+  # Charts for benchmark comparison
+  fl_chart: ^0.70.2
+
+  # Share files (CSV export)
+  share_plus: ^10.1.4
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

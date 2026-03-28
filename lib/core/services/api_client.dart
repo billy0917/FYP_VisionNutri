@@ -7,6 +7,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:smart_diet_ai/core/config/app_config.dart';
 import 'package:smart_diet_ai/core/services/supabase_service.dart';
+import 'package:smart_diet_ai/features/benchmark/benchmark_models.dart';
 
 class ApiClient {
   static final ApiClient _instance = ApiClient._internal();
@@ -476,6 +477,289 @@ class ApiClient {
         dataSource: cfsMatches.isNotEmpty ? 'cfs_official' : 'ai_estimate',
         cfsMatchName: cfsMatches.isNotEmpty ? topCfsName : null,
         ragSteps: ragSteps,
+      );
+    }
+  }
+
+  /// Benchmark-specific RAG analysis that returns dimension + weight + nutrition.
+  ///
+  /// Reuses Steps 1 & 2 from [analyzeFoodWithRag], but Step 3 asks Gemini to
+  /// also output width/length/height/volume/weight in the JSON.
+  Future<EstimationResult> analyzeFoodForBenchmark({
+    required String imageBase64,
+    String? cameraInfo,
+  }) async {
+    final ragSteps = <RagDebugStep>[];
+    final foodItems = await _identifyFoodName(imageBase64, ragSteps);
+    final foodName = foodItems.map((e) => e.$1).join('、');
+    final cfsMatches = await _searchCfsDatabase(foodItems, ragSteps);
+
+    // Build system prompt ── always asks for dimensions + nutrition
+    final camLine = (cameraInfo != null && cameraInfo.isNotEmpty)
+        ? 'Camera metadata: $cameraInfo. '
+        : 'Photo taken by a typical smartphone. ';
+
+    final hasArMeasure =
+        cameraInfo != null && cameraInfo.contains('ARCore-measured');
+
+    final measureStep = hasArMeasure
+        ? '1. MEASURE: The food\'s physical bounding-box dimensions were measured with ARCore '
+          '(see the camera metadata). Use them directly. Note: actual food volume is '
+          'typically 50-70% of the rectangular bounding box.\n'
+        : '1. MEASURE: Estimate each food item\'s physical dimensions (length × width × height in cm) '
+          'using perspective cues, plate/bowl/container size, and common object knowledge.\n';
+
+    String systemPrompt;
+    String userText;
+
+    if (cfsMatches.isNotEmpty) {
+      final cfsContext = cfsMatches.map((m) {
+        final name =
+            '${m['food_name_eng'] ?? ''} (${m['food_name_chi'] ?? ''})';
+        final fatVal = m['fat_g'];
+        final fatStr = (fatVal == null || fatVal.toString() == 'null')
+            ? 'not recorded'
+            : '${fatVal}g';
+        return '$name\nPer 100g: ${m['energy_kcal']}kcal, '
+            'protein ${m['protein_g']}g, carbs ${m['carbohydrate_g']}g, fat $fatStr';
+      }).join('\n\n');
+
+      systemPrompt =
+          'You are a precise nutritionist with expertise in estimating food portions from photos. '
+          'The photo shows "$foodName". '
+          '$camLine'
+          'Use the focal length and any available sensor data to judge the field of view and '
+          'real-world scale of objects in the frame. '
+          'Below is official nutrition data from the Hong Kong Centre for Food Safety (CFS) — '
+          'all values are PER 100g.\n\n'
+          'STEP-BY-STEP:\n'
+          '$measureStep'
+          '2. VOLUME: From the dimensions, estimate the food volume in mL or cm³.\n'
+          '3. WEIGHT: Convert volume to weight using typical food density '
+          '(e.g. rice ~1.1 g/mL, soup ~1.0, meat ~1.05, bread ~0.35, vegetables ~0.6).\n'
+          '4. NUTRITION: Use the CFS per-100g data to calculate total nutrients.\n\n'
+          'If a nutrient value is marked "not recorded", estimate it from nutritional knowledge. '
+          'Respond ONLY with valid JSON, no markdown, no extra text:\n'
+          '{"food_name":"…","width_cm":float,"length_cm":float,"height_cm":float,'
+          '"volume_ml":float,"weight_g":float,'
+          '"calories":int,"protein":int,"carbs":int,"fat":int,'
+          '"reasoning":"dims → vol → weight → nutrition"}';
+
+      userText = 'CFS official nutrition data (per 100g):\n$cfsContext\n\n'
+          'Estimate the portion from the image and calculate total nutrition.';
+    } else {
+      systemPrompt =
+          'You are an expert nutritionist AI. Analyze the food in the image. '
+          '$camLine'
+          'First estimate each food item\'s physical dimensions (L×W×H cm) using perspective cues, '
+          'plate/bowl/container size, and common object knowledge. '
+          'Then estimate volume (mL) and convert to weight using typical food density '
+          '(rice ~1.1g/mL, soup ~1.0, meat ~1.05, bread ~0.35, vegetables ~0.6). '
+          'Respond ONLY with valid JSON, no markdown, no extra text:\n'
+          '{"food_name":"…","width_cm":float,"length_cm":float,"height_cm":float,'
+          '"volume_ml":float,"weight_g":float,'
+          '"calories":int,"protein":int,"carbs":int,"fat":int,'
+          '"reasoning":"dims → vol → weight → nutrition"}';
+
+      userText = 'Analyze this food image.';
+    }
+
+    final body = jsonEncode({
+      'model': AppConfig.visionModel,
+      'max_tokens': 10000,
+      'temperature': 0.3,
+      'messages': [
+        {'role': 'system', 'content': systemPrompt},
+        {
+          'role': 'user',
+          'content': [
+            {'type': 'text', 'text': userText},
+            {
+              'type': 'image_url',
+              'image_url': {
+                'url': 'data:image/jpeg;base64,$imageBase64'
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    final response = await http.post(
+      Uri.parse(AppConfig.visionApiUrl),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ${AppConfig.visionApiKey}',
+      },
+      body: body,
+    );
+
+    if (response.statusCode != 200) {
+      throw ApiException(
+        statusCode: response.statusCode,
+        message: 'AI API error: ${response.body}',
+      );
+    }
+
+    final decoded = jsonDecode(response.body);
+    var content = decoded['choices'][0]['message']['content'] as String;
+
+    if (content.contains('```')) {
+      final start = content.indexOf('{');
+      final end = content.lastIndexOf('}');
+      if (start != -1 && end != -1) content = content.substring(start, end + 1);
+    }
+
+    try {
+      final r = jsonDecode(content) as Map<String, dynamic>;
+      return EstimationResult(
+        widthCm: (r['width_cm'] as num?)?.toDouble(),
+        lengthCm: (r['length_cm'] as num?)?.toDouble(),
+        heightCm: (r['height_cm'] as num?)?.toDouble(),
+        volumeMl: (r['volume_ml'] as num?)?.toDouble(),
+        weightG: (r['weight_g'] as num?)?.toDouble(),
+        calories: (r['calories'] as num?)?.toInt() ?? 0,
+        protein: (r['protein'] as num?)?.toInt() ?? 0,
+        carbs: (r['carbs'] as num?)?.toInt() ?? 0,
+        fat: (r['fat'] as num?)?.toInt() ?? 0,
+        reasoning: r['reasoning'] as String? ?? '',
+      );
+    } catch (_) {
+      // Regex fallback for truncated JSON
+      double? ed(String key) {
+        final m = RegExp('"$key"\\s*:\\s*([\\d.]+)').firstMatch(content);
+        return m != null ? double.tryParse(m.group(1)!) : null;
+      }
+
+      int? ei(String key) {
+        final m = RegExp('"$key"\\s*:\\s*(\\d+)').firstMatch(content);
+        return m != null ? int.tryParse(m.group(1)!) : null;
+      }
+
+      return EstimationResult(
+        widthCm: ed('width_cm'),
+        lengthCm: ed('length_cm'),
+        heightCm: ed('height_cm'),
+        volumeMl: ed('volume_ml'),
+        weightG: ed('weight_g'),
+        calories: ei('calories') ?? 0,
+        protein: ei('protein') ?? 0,
+        carbs: ei('carbs') ?? 0,
+        fat: ei('fat') ?? 0,
+        reasoning: '',
+      );
+    }
+  }
+
+  /// Dimension-only estimation for non-food objects (no RAG, no nutrition).
+  ///
+  /// Asks Gemini to estimate physical dimensions only.
+  Future<EstimationResult> estimateDimensionsOnly({
+    required String imageBase64,
+    String? cameraInfo,
+  }) async {
+    final camLine = (cameraInfo != null && cameraInfo.isNotEmpty)
+        ? 'Camera metadata: $cameraInfo. '
+        : 'Photo taken by a typical smartphone. ';
+
+    final hasArMeasure =
+        cameraInfo != null && cameraInfo.contains('ARCore-measured');
+
+    final measureStep = hasArMeasure
+        ? 'The object\'s bounding-box dimensions were measured with ARCore '
+          '(see the camera metadata). Use them directly.'
+        : 'Estimate the object\'s physical dimensions (length × width × height in cm) '
+          'using perspective cues, nearby objects for scale reference, and common knowledge '
+          'about the object\'s typical size.';
+
+    final systemPrompt =
+        'You are an expert at estimating physical dimensions of objects from photos. '
+        '$camLine'
+        'Use the focal length and any available sensor data to judge the field of view and '
+        'real-world scale of objects in the frame.\n\n'
+        '$measureStep\n\n'
+        'Respond ONLY with valid JSON, no markdown, no extra text:\n'
+        '{"object_name":"…","width_cm":float,"length_cm":float,"height_cm":float,'
+        '"volume_ml":float,"reasoning":"brief explanation of how you estimated"}';
+
+    final body = jsonEncode({
+      'model': AppConfig.visionModel,
+      'max_tokens': 4000,
+      'temperature': 0.3,
+      'messages': [
+        {'role': 'system', 'content': systemPrompt},
+        {
+          'role': 'user',
+          'content': [
+            {
+              'type': 'text',
+              'text': 'Estimate the physical dimensions of the main object in this photo.',
+            },
+            {
+              'type': 'image_url',
+              'image_url': {'url': 'data:image/jpeg;base64,$imageBase64'},
+            },
+          ],
+        },
+      ],
+    });
+
+    final response = await http.post(
+      Uri.parse(AppConfig.visionApiUrl),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ${AppConfig.visionApiKey}',
+      },
+      body: body,
+    );
+
+    if (response.statusCode != 200) {
+      throw ApiException(
+        statusCode: response.statusCode,
+        message: 'AI API error: ${response.body}',
+      );
+    }
+
+    final decoded = jsonDecode(response.body);
+    var content = decoded['choices'][0]['message']['content'] as String;
+
+    if (content.contains('```')) {
+      final start = content.indexOf('{');
+      final end = content.lastIndexOf('}');
+      if (start != -1 && end != -1) {
+        content = content.substring(start, end + 1);
+      }
+    }
+
+    try {
+      final r = jsonDecode(content) as Map<String, dynamic>;
+      return EstimationResult(
+        widthCm: (r['width_cm'] as num?)?.toDouble(),
+        lengthCm: (r['length_cm'] as num?)?.toDouble(),
+        heightCm: (r['height_cm'] as num?)?.toDouble(),
+        volumeMl: (r['volume_ml'] as num?)?.toDouble(),
+        calories: 0,
+        protein: 0,
+        carbs: 0,
+        fat: 0,
+        reasoning: r['reasoning'] as String? ?? '',
+      );
+    } catch (_) {
+      double? ed(String key) {
+        final m = RegExp('"$key"\\s*:\\s*([\\d.]+)').firstMatch(content);
+        return m != null ? double.tryParse(m.group(1)!) : null;
+      }
+
+      return EstimationResult(
+        widthCm: ed('width_cm'),
+        lengthCm: ed('length_cm'),
+        heightCm: ed('height_cm'),
+        volumeMl: ed('volume_ml'),
+        calories: 0,
+        protein: 0,
+        carbs: 0,
+        fat: 0,
+        reasoning: '',
       );
     }
   }
