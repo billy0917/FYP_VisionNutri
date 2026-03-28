@@ -1,11 +1,15 @@
 ﻿/// SmartDiet AI - Chat Screen
-/// 
-/// AI Nutritionist chat interface using FastGPT RAG.
+///
+/// AI Nutritionist chat with 30-day diet context, streaming responses,
+/// Markdown rendering, dynamic suggestion chips, and CFS RAG.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:smart_diet_ai/core/services/api_client.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:smart_diet_ai/core/theme/clay_theme.dart';
+import 'package:smart_diet_ai/features/chat/chat_service.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -17,76 +21,118 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  final List<ChatMessage> _messages = [];
-  String? _conversationId;
-  bool _isLoading = false;
+  final List<_ChatMessage> _messages = [];
+  final ChatService _chatService = ChatService();
+
+  String _dietContext = '';
+  List<String> _suggestions = [];
+  bool _isLoadingSuggestions = true;
+  bool _isStreaming = false;
+  bool _isSearchingRag = false;
+  StreamSubscription<String>? _streamSub;
 
   @override
   void initState() {
     super.initState();
-    // Add welcome message
-    _messages.add(ChatMessage(
-      content: "Hello! I'm your AI nutritionist. I can help• ou with:\n\n"
-          "• Nutrition ad• ce and tips\n"
-          "• Meal planni•  suggestions\n"
-          "• Understand• g your macros\n"
-          "• Answering diet-related questions\n\n"
-          "How can I help you today?",
-      isUser: false,
-      timestamp: DateTime.now(),
+    _messages.add(_ChatMessage(
+      content: "Hello! I'm your AI nutritionist. Ask me anything about "
+          'your diet, nutrition goals, or specific foods.\n\n'
+          'I have access to your dietary records and can give '
+          'personalised advice.',
+      role: _Role.assistant,
     ));
+    _initContext();
+  }
+
+  Future<void> _initContext() async {
+    // Load diet context and generate suggestions in parallel
+    final contextFuture = _chatService.buildDietContext();
+    _dietContext = await contextFuture;
+    final suggestions =
+        await _chatService.generateSuggestions(_dietContext);
+    if (mounted) {
+      setState(() {
+        _suggestions = suggestions;
+        _isLoadingSuggestions = false;
+      });
+    }
   }
 
   @override
   void dispose() {
+    _streamSub?.cancel();
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
-  Future<void> _sendMessage() async {
-    final message = _messageController.text.trim();
-    if (message.isEmpty) return;
+  // ── Send message ─────────────────────────────────────────
 
-    // Add user message
-    setState(() {
-      _messages.add(ChatMessage(
-        content: message,
-        isUser: true,
-        timestamp: DateTime.now(),
-      ));
-      _isLoading = true;
-    });
+  Future<void> _sendMessage([String? override]) async {
+    final text = (override ?? _messageController.text).trim();
+    if (text.isEmpty || _isStreaming) return;
 
     _messageController.clear();
+    setState(() {
+      _messages.add(_ChatMessage(content: text, role: _Role.user));
+      _suggestions = []; // hide chips after first message
+      _isStreaming = true;
+    });
+    _scrollToBottom();
+
+    // --- CFS RAG check ---
+    String? cfsContext;
+    final foodQuery = _chatService.detectFoodQuery(text);
+    if (foodQuery != null) {
+      setState(() => _isSearchingRag = true);
+      cfsContext = await _chatService.searchCfsFood(foodQuery);
+      if (mounted) setState(() => _isSearchingRag = false);
+    }
+
+    // --- Build message history for API ---
+    final history = _messages
+        .map((m) => {'role': m.role.name, 'content': m.content})
+        .toList();
+
+    // Add empty assistant message that will be filled by streaming
+    final assistantMsg = _ChatMessage(content: '', role: _Role.assistant);
+    setState(() => _messages.add(assistantMsg));
     _scrollToBottom();
 
     try {
-      final response = await ApiClient().sendChatMessage(
-        message: message,
-        conversationId: _conversationId,
+      final stream = _chatService.streamChat(
+        messages: history,
+        dietContext: _dietContext,
+        cfsContext: cfsContext,
       );
 
-      setState(() {
-        _conversationId = response.conversationId;
-        _messages.add(ChatMessage(
-          content: response.answer,
-          isUser: false,
-          timestamp: DateTime.now(),
-        ));
-      });
+      _streamSub = stream.listen(
+        (token) {
+          if (!mounted) return;
+          setState(() {
+            assistantMsg.content += token;
+          });
+          _scrollToBottom();
+        },
+        onError: (Object e) {
+          if (!mounted) return;
+          setState(() {
+            assistantMsg.content = 'Sorry, something went wrong. Please try again.';
+            assistantMsg.isError = true;
+            _isStreaming = false;
+          });
+        },
+        onDone: () {
+          if (!mounted) return;
+          setState(() => _isStreaming = false);
+        },
+      );
     } catch (e) {
       setState(() {
-        _messages.add(ChatMessage(
-          content: "I'm sorry, I couldn't process your request. Please try again.",
-          isUser: false,
-          timestamp: DateTime.now(),
-          isError: true,
-        ));
+        assistantMsg.content = 'Sorry, something went wrong. Please try again.';
+        assistantMsg.isError = true;
+        _isStreaming = false;
       });
-    } finally {
-      setState(() => _isLoading = false);
-      _scrollToBottom();
     }
   }
 
@@ -95,148 +141,185 @@ class _ChatScreenState extends State<ChatScreen> {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
           _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
+          duration: const Duration(milliseconds: 200),
           curve: Curves.easeOut,
         );
       }
     });
   }
 
+  // ── Build ────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Column(
         children: [
-          // Chat header — clay style
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Theme.of(context).brightness == Brightness.dark
-                  ? ClayColors.darkSurfaceCard
-                  : ClayColors.surfaceCard,
-              borderRadius: const BorderRadius.vertical(
-                bottom: Radius.circular(24),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Theme.of(context).brightness == Brightness.dark
-                      ? ClayColors.darkShadowDark
-                      : ClayColors.shadowDark,
-                  offset: const Offset(0, 4),
-                  blurRadius: 12,
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                CircleAvatar(
-                  backgroundColor: ClayColors.primary,
-                  child: const Icon(
-                    Icons.smart_toy,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'AI Nutritionist',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                    ),
-                    Text(
-                      'Powered by FastGPT RAG',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Colors.grey[600],
-                          ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          // Messages list
+          _buildHeader(context),
           Expanded(
             child: ListView.builder(
               controller: _scrollController,
               padding: const EdgeInsets.all(16),
-              itemCount: _messages.length + (_isLoading ? 1 : 0),
-              itemBuilder: (context, index) {
-                if (index == _messages.length && _isLoading) {
-                  return _buildTypingIndicator();
-                }
-                return _buildMessageBubble(_messages[index]);
-              },
+              itemCount: _messages.length,
+              itemBuilder: (context, index) =>
+                  _buildMessageBubble(_messages[index]),
             ),
           ),
-          // Quick suggestions
-          if (_messages.length <= 1)
-            Container(
-              height: 50,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: ListView(
-                scrollDirection: Axis.horizontal,
+          // Search indicator
+          if (_isSearchingRag)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: Row(
                 children: [
-                  _buildSuggestionChip('What should I eat for breakfast?'),
-                  _buildSuggestionChip('How much protein do I need?'),
-                  _buildSuggestionChip('Suggest a low-carb meal'),
+                  SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: ClayColors.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Searching food database...',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                    ),
+                  ),
                 ],
               ),
             ),
-          // Input field
+          // Streaming indicator
+          if (_isStreaming && !_isSearchingRag)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: ClayColors.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Generating...',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  ),
+                ],
+              ),
+            ),
+          // Suggestion chips
+          _buildSuggestionArea(),
+          // Input
           _buildInputField(),
         ],
       ),
     );
   }
 
-  Widget _buildMessageBubble(ChatMessage message) {
+  // ── Header ───────────────────────────────────────────────
+
+  Widget _buildHeader(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? ClayColors.darkSurfaceCard : ClayColors.surfaceCard,
+        borderRadius: const BorderRadius.vertical(
+          bottom: Radius.circular(24),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: isDark ? ClayColors.darkShadowDark : ClayColors.shadowDark,
+            offset: const Offset(0, 4),
+            blurRadius: 12,
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            backgroundColor: ClayColors.primary,
+            child: const Icon(Icons.smart_toy, color: Colors.white),
+          ),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'AI Nutritionist',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              Text(
+                'Powered by Gemini + CFS RAG',
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: Colors.grey[600]),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Message bubble ───────────────────────────────────────
+
+  Widget _buildMessageBubble(_ChatMessage message) {
+    final isUser = message.role == _Role.user;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
         mainAxisAlignment:
-            message.isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+            isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (!message.isUser) ...[
+          if (!isUser) ...[
             CircleAvatar(
               radius: 16,
               backgroundColor: ClayColors.primary,
-              child: const Icon(
-                Icons.smart_toy,
-                size: 18,
-                color: Colors.white,
-              ),
+              child: const Icon(Icons.smart_toy, size: 18, color: Colors.white),
             ),
             const SizedBox(width: 8),
           ],
           Flexible(
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
-                color: message.isUser
+                color: isUser
                     ? ClayColors.primary
                     : message.isError
                         ? ClayColors.error.withValues(alpha: 0.15)
-                        : Theme.of(context).brightness == Brightness.dark
+                        : isDark
                             ? ClayColors.darkSurfaceCard
                             : ClayColors.surfaceCard,
                 borderRadius: BorderRadius.circular(20).copyWith(
-                  bottomLeft: message.isUser ? null : const Radius.circular(6),
-                  bottomRight: message.isUser ? const Radius.circular(6) : null,
+                  bottomLeft:
+                      isUser ? null : const Radius.circular(6),
+                  bottomRight:
+                      isUser ? const Radius.circular(6) : null,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Theme.of(context).brightness == Brightness.dark
+                    color: isDark
                         ? ClayColors.darkShadowDark
                         : ClayColors.shadowDark.withValues(alpha: 0.4),
                     offset: const Offset(3, 3),
                     blurRadius: 8,
                   ),
                   BoxShadow(
-                    color: Theme.of(context).brightness == Brightness.dark
+                    color: isDark
                         ? ClayColors.darkShadowLight.withValues(alpha: 0.2)
                         : ClayColors.shadowLight.withValues(alpha: 0.7),
                     offset: const Offset(-2, -2),
@@ -244,105 +327,108 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                 ],
               ),
-              child: Text(
-                message.content,
-                style: TextStyle(
-                  color: message.isUser
-                      ? Colors.white
-                      : message.isError
-                          ? ClayColors.error
-                          : null,
-                ),
-              ),
+              child: isUser
+                  ? Text(
+                      message.content,
+                      style: const TextStyle(color: Colors.white),
+                    )
+                  : message.isError
+                      ? Text(
+                          message.content,
+                          style: TextStyle(color: ClayColors.error),
+                        )
+                      : MarkdownBody(
+                          data: message.content,
+                          selectable: true,
+                          styleSheet: MarkdownStyleSheet(
+                            p: TextStyle(
+                              color: isDark ? Colors.grey[200] : null,
+                              fontSize: 14,
+                              height: 1.5,
+                            ),
+                            listBullet: TextStyle(
+                              color: isDark ? Colors.grey[200] : null,
+                            ),
+                            strong: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: isDark ? Colors.white : null,
+                            ),
+                            code: TextStyle(
+                              backgroundColor: isDark
+                                  ? Colors.black26
+                                  : Colors.grey[200],
+                              fontSize: 13,
+                            ),
+                            blockquoteDecoration: BoxDecoration(
+                              border: Border(
+                                left: BorderSide(
+                                  color: ClayColors.primary,
+                                  width: 3,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
             ),
           ),
-          if (message.isUser) const SizedBox(width: 8),
+          if (isUser) const SizedBox(width: 8),
         ],
       ),
     );
   }
 
-  Widget _buildTypingIndicator() {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 16,
-            backgroundColor: ClayColors.primary,
-            child: const Icon(
-              Icons.smart_toy,
-              size: 18,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: Theme.of(context).brightness == Brightness.dark
-                  ? ClayColors.darkSurfaceCard
-                  : ClayColors.surfaceCard,
-              borderRadius: BorderRadius.circular(20).copyWith(
-                bottomLeft: const Radius.circular(6),
+  // ── Suggestion chips ─────────────────────────────────────
+
+  Widget _buildSuggestionArea() {
+    // Only show before user has sent a message
+    final userSent = _messages.any((m) => m.role == _Role.user);
+    if (userSent) return const SizedBox.shrink();
+
+    if (_isLoadingSuggestions) {
+      return Container(
+        height: 50,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: ClayColors.primary,
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: Theme.of(context).brightness == Brightness.dark
-                      ? ClayColors.darkShadowDark
-                      : ClayColors.shadowDark.withValues(alpha: 0.4),
-                  offset: const Offset(3, 3),
-                  blurRadius: 8,
-                ),
-              ],
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildDot(0),
-                _buildDot(1),
-                _buildDot(2),
-              ],
+            const SizedBox(width: 8),
+            Text(
+              'Loading suggestions...',
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDot(int index) {
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0.0, end: 1.0),
-      duration: Duration(milliseconds: 600 + (index * 200)),
-      builder: (context, value, child) {
-        return Container(
-          margin: const EdgeInsets.symmetric(horizontal: 2),
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(
-            color: Colors.grey[400],
-            shape: BoxShape.circle,
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildSuggestionChip(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 8),
-      child: ActionChip(
-        label: Text(
-          text,
-          style: const TextStyle(fontSize: 12),
+          ],
         ),
-        onPressed: () {
-          _messageController.text = text;
-          _sendMessage();
-        },
+      );
+    }
+
+    if (_suggestions.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      height: 50,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        children: _suggestions
+            .map((s) => Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ActionChip(
+                    label: Text(s, style: const TextStyle(fontSize: 12)),
+                    onPressed: () => _sendMessage(s),
+                  ),
+                ))
+            .toList(),
       ),
     );
   }
+
+  // ── Input field ──────────────────────────────────────────
 
   Widget _buildInputField() {
     return Container(
@@ -382,8 +468,8 @@ class _ChatScreenState extends State<ChatScreen> {
             const SizedBox(width: 8),
             FloatingActionButton(
               mini: true,
-              onPressed: _isLoading ? null : _sendMessage,
-              child: _isLoading
+              onPressed: _isStreaming ? null : () => _sendMessage(),
+              child: _isStreaming
                   ? const SizedBox(
                       width: 20,
                       height: 20,
@@ -401,17 +487,18 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 }
 
-/// Chat message model
-class ChatMessage {
-  final String content;
-  final bool isUser;
-  final DateTime timestamp;
-  final bool isError;
+// ── Models ──────────────────────────────────────────────────
 
-  ChatMessage({
+enum _Role { user, assistant }
+
+class _ChatMessage {
+  String content;
+  final _Role role;
+  bool isError;
+
+  _ChatMessage({
     required this.content,
-    required this.isUser,
-    required this.timestamp,
+    required this.role,
     this.isError = false,
   });
 }

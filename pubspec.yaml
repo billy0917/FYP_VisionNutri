@@ -53,6 +53,9 @@ dependencies:
   # Share files (CSV export)
   share_plus: ^10.1.4
 
+  # Markdown rendering for AI chat responses
+  flutter_markdown: ^0.7.7
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
