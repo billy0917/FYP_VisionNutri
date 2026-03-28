@@ -206,7 +206,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    'Generating...',
+                    'Thinking...',
                     style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                   ),
                 ],
@@ -337,7 +337,9 @@ class _ChatScreenState extends State<ChatScreen> {
                           message.content,
                           style: TextStyle(color: ClayColors.error),
                         )
-                      : MarkdownBody(
+                      : message.content.isEmpty
+                          ? const _ThinkingDots()
+                          : MarkdownBody(
                           data: message.content,
                           selectable: true,
                           styleSheet: MarkdownStyleSheet(
@@ -501,4 +503,93 @@ class _ChatMessage {
     required this.role,
     this.isError = false,
   });
+}
+
+// ── Thinking dots animation ──────────────────────────────────
+
+class _ThinkingDots extends StatefulWidget {
+  const _ThinkingDots();
+
+  @override
+  State<_ThinkingDots> createState() => _ThinkingDotsState();
+}
+
+class _ThinkingDotsState extends State<_ThinkingDots>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late List<Animation<double>> _dots;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat();
+
+    _dots = List.generate(3, (i) {
+      final start = i * 0.2;
+      return TweenSequence<double>([
+        TweenSequenceItem(
+          tween: Tween(begin: 0.3, end: 1.0)
+              .chain(CurveTween(curve: Curves.easeIn)),
+          weight: 30,
+        ),
+        TweenSequenceItem(
+          tween: Tween(begin: 1.0, end: 0.3)
+              .chain(CurveTween(curve: Curves.easeOut)),
+          weight: 30,
+        ),
+        TweenSequenceItem(
+          tween: ConstantTween(0.3),
+          weight: 40,
+        ),
+      ]).animate(
+        CurvedAnimation(
+          parent: _ctrl,
+          curve: Interval(start, (start + 0.6).clamp(0.0, 1.0)),
+        ),
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        const Text(
+          'Thinking',
+          style: TextStyle(fontSize: 14, color: Colors.black54),
+        ),
+        const SizedBox(width: 2),
+        ...List.generate(3, (i) {
+          return AnimatedBuilder(
+            animation: _dots[i],
+            builder: (context, _) => Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 1.5),
+              child: Opacity(
+                opacity: _dots[i].value,
+                child: const Text(
+                  '.',
+                  style: TextStyle(
+                    fontSize: 20,
+                    height: 1.0,
+                    color: Colors.black54,
+                  ),
+                ),
+              ),
+            ),
+          );
+        }),
+      ],
+    );
+  }
 }
