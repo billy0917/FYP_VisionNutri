@@ -2,6 +2,7 @@ library;
 
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:exif/exif.dart';
@@ -118,22 +119,49 @@ class _BenchmarkDetailScreenState extends State<BenchmarkDetailScreen> {
       final tags = await readExifFromBytes(bytes);
       if (tags.isEmpty) return null;
       final parts = <String>[];
+
       final fl = tags['EXIF FocalLength'];
       if (fl != null) parts.add('focal length ${fl}mm');
-      final fl35 = tags['EXIF FocalLengthIn35mmFilm'];
-      if (fl35 != null) parts.add('35mm equiv ${fl35}mm');
+      final fl35Tag = tags['EXIF FocalLengthIn35mmFilm'];
+      if (fl35Tag != null) parts.add('35mm equiv ${fl35Tag}mm');
       final fNum = tags['EXIF FNumber'];
       if (fNum != null) parts.add('f/$fNum');
       final iso = tags['EXIF ISOSpeedRatings'];
       if (iso != null) parts.add('ISO $iso');
-      final w = tags['EXIF ExifImageWidth'] ?? tags['Image ImageWidth'];
-      final h = tags['EXIF ExifImageLength'] ?? tags['Image ImageLength'];
-      if (w != null && h != null) parts.add('$w×${h}px');
+      final wTag = tags['EXIF ExifImageWidth'] ?? tags['Image ImageWidth'];
+      final hTag = tags['EXIF ExifImageLength'] ?? tags['Image ImageLength'];
+      if (wTag != null && hTag != null) parts.add('$wTag×${hTag}px');
       final make = tags['Image Make'];
       final model = tags['Image Model'];
       if (make != null || model != null) parts.add('${make ?? ''} ${model ?? ''}'.trim());
       final dist = tags['EXIF SubjectDistance'];
       if (dist != null) parts.add('subject distance ${dist}m');
+
+      // ── FOV calibration block ──────────────────────────────
+      // Compute horizontal FOV from 35mm-equivalent focal length and give
+      // the model a concrete formula to convert pixel widths → real cm.
+      if (fl35Tag != null && wTag != null) {
+        final fl35 = double.tryParse(
+            fl35Tag.toString().split('/').first.trim());
+        final wPx = double.tryParse(wTag.toString());
+        if (fl35 != null && fl35 > 0 && wPx != null && wPx > 0) {
+          // 35mm full-frame sensor half-width = 18mm
+          final fovRad = 2 * math.atan(18.0 / fl35);
+          final fovDeg = fovRad * 180 / math.pi;
+          final degPerPx = fovDeg / wPx;
+          parts.add(
+            'OPTICS: horizontal FOV=${fovDeg.toStringAsFixed(1)}°, '
+            '${wPx.toInt()}px wide → '
+            '${degPerPx.toStringAsFixed(4)}°/px. '
+            'To convert food container width: '
+            'estimate subject distance D_cm from scene depth cues, '
+            'then real_width_cm = '
+            '2 × D_cm × tan(container_width_px × ${degPerPx.toStringAsFixed(4)} × π/360). '
+            'Use this formula in step 1 to calibrate your dimension estimates.',
+          );
+        }
+      }
+
       return parts.isEmpty ? null : parts.join(', ');
     } catch (_) {
       return null;

@@ -4,6 +4,7 @@
 library;
 
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -80,8 +81,6 @@ class _CameraScreenState extends State<CameraScreen> {
             _previewAspectRatio = aspectRatio;
           });
         }
-
-        await _prepareSegmentationPreview(bytes);
       }
     } catch (e) {
       if (mounted) {
@@ -153,11 +152,6 @@ class _CameraScreenState extends State<CameraScreen> {
       String? fullCameraInfo;
       final parts = <String>[];
       if (_cameraInfo != null) parts.add(_cameraInfo!);
-      final onDeviceSegmentation =
-          _segmentationResult ??
-          await VolumeService().estimateVolume(imageBytes: _imageBytes!);
-      final segmentationContext = onDeviceSegmentation.toPromptContext();
-      if (segmentationContext.isNotEmpty) parts.add(segmentationContext);
       if (_arMeasurement != null) parts.add(_arMeasurement!.toPromptContext());
       if (parts.isNotEmpty) fullCameraInfo = parts.join('. ');
 
@@ -168,9 +162,6 @@ class _CameraScreenState extends State<CameraScreen> {
 
       setState(() {
         _analysisResult = result;
-        if (onDeviceSegmentation.hasEstimate) {
-          _segmentationResult = onDeviceSegmentation;
-        }
       });
     } catch (e) {
       if (mounted) {
@@ -247,6 +238,8 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   /// Extract useful EXIF camera metadata and format as a one-line LLM context.
+  /// Also computes horizontal FOV from 35mm equiv focal length and appends an
+  /// OPTICS block so the model can calibrate its dimension estimates (Method B).
   Future<String?> _extractCameraInfo(Uint8List bytes) async {
     try {
       final tags = await readExifFromBytes(bytes);
@@ -259,8 +252,8 @@ class _CameraScreenState extends State<CameraScreen> {
       if (fl != null) parts.add('focal length ${fl}mm');
 
       // 35mm equivalent focal length
-      final fl35 = tags['EXIF FocalLengthIn35mmFilm'];
-      if (fl35 != null) parts.add('35mm equiv ${fl35}mm');
+      final fl35Tag = tags['EXIF FocalLengthIn35mmFilm'];
+      if (fl35Tag != null) parts.add('35mm equiv ${fl35Tag}mm');
 
       // Aperture
       final fNum = tags['EXIF FNumber'];
@@ -271,9 +264,9 @@ class _CameraScreenState extends State<CameraScreen> {
       if (iso != null) parts.add('ISO $iso');
 
       // Image dimensions
-      final w = tags['EXIF ExifImageWidth'] ?? tags['Image ImageWidth'];
+      final wTag = tags['EXIF ExifImageWidth'] ?? tags['Image ImageWidth'];
       final h = tags['EXIF ExifImageLength'] ?? tags['Image ImageLength'];
-      if (w != null && h != null) parts.add('$w×${h}px');
+      if (wTag != null && h != null) parts.add('$wTag×${h}px');
 
       // Camera make/model
       final make = tags['Image Make'];
@@ -285,6 +278,27 @@ class _CameraScreenState extends State<CameraScreen> {
       // Subject distance (if available — rare but very useful)
       final dist = tags['EXIF SubjectDistance'];
       if (dist != null) parts.add('subject distance ${dist}m');
+
+      // FOV calibration block (Method B) — computed from 35mm equiv focal length
+      if (fl35Tag != null && wTag != null) {
+        final fl35 = double.tryParse(fl35Tag.toString().split('/').first.trim());
+        final wPx = double.tryParse(wTag.toString());
+        if (fl35 != null && fl35 > 0 && wPx != null && wPx > 0) {
+          final fovRad = 2 * math.atan(18.0 / fl35);
+          final fovDeg = fovRad * 180 / math.pi;
+          final degPerPx = fovDeg / wPx;
+          parts.add(
+            'OPTICS: horizontal FOV=${fovDeg.toStringAsFixed(1)}°, '
+            '${wPx.toInt()}px wide → '
+            '${degPerPx.toStringAsFixed(4)}°/px. '
+            'To convert food container width: '
+            'estimate subject distance D_cm from scene depth cues, '
+            'then real_width_cm = '
+            '2 × D_cm × tan(container_width_px × ${degPerPx.toStringAsFixed(4)} × π/360). '
+            'Use this formula in step 1 to calibrate your dimension estimates.',
+          );
+        }
+      }
 
       return parts.isEmpty ? null : parts.join(', ');
     } catch (_) {
@@ -346,53 +360,16 @@ class _CameraScreenState extends State<CameraScreen> {
                       aspectRatio: previewAspectRatio,
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(18),
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            DecoratedBox(
-                              decoration: BoxDecoration(
-                                color: isDark
-                                    ? ClayColors.darkSurface
-                                    : Colors.white.withAlpha(217),
-                              ),
-                              child: Image.memory(
-                                _imageBytes!,
-                                fit: BoxFit.contain,
-                              ),
-                            ),
-                            if (_segmentationResult?.hasMaskOverlay ?? false)
-                              IgnorePointer(
-                                child: Image.memory(
-                                  _segmentationResult!.maskOverlayPngBytes!,
-                                  fit: BoxFit.contain,
-                                ),
-                              ),
-                            if (_isPreparingSegmentation)
-                              Container(
-                                color: Colors.black.withAlpha(72),
-                                alignment: Alignment.center,
-                                child: const Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    SizedBox(
-                                      width: 28,
-                                      height: 28,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2.5,
-                                      ),
-                                    ),
-                                    SizedBox(height: 10),
-                                    Text(
-                                      'Generating mask preview...',
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                          ],
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: isDark
+                                ? ClayColors.darkSurface
+                                : Colors.white.withAlpha(217),
+                          ),
+                          child: Image.memory(
+                            _imageBytes!,
+                            fit: BoxFit.contain,
+                          ),
                         ),
                       ),
                     ),
@@ -416,11 +393,6 @@ class _CameraScreenState extends State<CameraScreen> {
                     ),
                   ),
           ),
-          if (_imageBytes != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-              child: _buildSegmentationStatus(),
-            ),
           // Action buttons
           Padding(
             padding: const EdgeInsets.all(16),

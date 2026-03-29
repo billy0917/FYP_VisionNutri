@@ -366,15 +366,30 @@ class ApiClient {
           ? '1. MEASURE: The food\'s physical bounding-box dimensions were measured with ARCore '
             '(see the camera metadata). Use them directly. Note: actual food volume is '
             'typically 50-70% of the rectangular bounding box.\n'
-          : '1. MEASURE: Estimate each food item\'s physical dimensions (length × width × height in cm) '
-            'using perspective cues, plate/bowl/container size, and common object knowledge.\n';
+          : (cameraInfo != null && cameraInfo.contains('OPTICS:'))
+            ? '1. MEASURE: The camera metadata includes an OPTICS block with the '
+              'horizontal field of view and a pixel-to-cm formula. '
+              'IMPORTANT: use that formula to calibrate the food container dimensions. '
+              'Step 1a — count the container\'s pixel width in the image. '
+              'Step 1b — estimate subject distance D_cm from scene depth cues (table surface angle, '
+              'background objects). '
+              'Step 1c — apply: real_width_cm = 2 × D_cm × tan(pixel_width × deg_per_px × π/360) '
+              'where deg_per_px is given in the OPTICS block. '
+              'Use the same approach for length and height.\n'
+            : '1. MEASURE: Estimate each food item\'s physical dimensions (length × width × height in cm) '
+              'using perspective cues, plate/bowl/container size, and common object knowledge.\n';
+
+      // Reasoning schema hint varies by measurement method
+      final reasoningHint = hasArMeasure
+          ? '"reasoning": "ARCore dims LxWxH cm → ~V mL → ~Wg, CFS: [name]"'
+          : (cameraInfo != null && cameraInfo.contains('OPTICS:'))
+            ? '"reasoning": "EXIF FOV-calibrated: ~Wpx × D_cm → ~Wcm; dims LxWxH cm → ~V mL → ~Wg, CFS: [name]"'
+            : '"reasoning": "dims ~LxWxH cm → ~V mL → ~Wg, CFS: [name]"';
 
       systemPrompt =
           'You are a precise nutritionist with expertise in estimating food portions from photos. '
           'The photo shows "$foodName". '
           '$camLine'
-          'Use the focal length and any available sensor data to judge the field of view and '
-          'real-world scale of objects in the frame. '
           'Below is official nutrition data from the Hong Kong Centre for Food Safety (CFS) — '
           'all values are PER 100g.\n\n'
           'STEP-BY-STEP:\n'
@@ -387,7 +402,7 @@ class ApiClient {
           'Respond ONLY with valid JSON, no markdown, no extra text:\n'
           '{"food_name": "concise name", "calories": integer, "protein": integer, '
           '"carbs": integer, "fat": integer, '
-          '"reasoning": "dims ~LxWxH cm → ~V mL → ~Wg, CFS: [name]"}';
+          '$reasoningHint}';
 
       userText = 'CFS official nutrition data (per 100g):\n$cfsContext\n\n'
           'Estimate the portion from the image and calculate total nutrition.';
@@ -506,8 +521,18 @@ class ApiClient {
         ? '1. MEASURE: The food\'s physical bounding-box dimensions were measured with ARCore '
           '(see the camera metadata). Use them directly. Note: actual food volume is '
           'typically 50-70% of the rectangular bounding box.\n'
-        : '1. MEASURE: Estimate each food item\'s physical dimensions (length × width × height in cm) '
-          'using perspective cues, plate/bowl/container size, and common object knowledge.\n';
+        : (cameraInfo != null && cameraInfo.contains('OPTICS:'))
+          ? '1. MEASURE: The camera metadata includes an OPTICS block with the '
+            'horizontal field of view and a pixel-to-cm formula. '
+            'IMPORTANT: use that formula to calibrate the food container dimensions. '
+            'Step 1a — count the container\'s pixel width in the image. '
+            'Step 1b — estimate subject distance D_cm from scene depth cues (table surface angle, '
+            'background objects). '
+            'Step 1c — apply: real_width_cm = 2 × D_cm × tan(pixel_width × deg_per_px × π/360) '
+            'where deg_per_px is given in the OPTICS block. '
+            'Use the same approach for length and height.\n'
+          : '1. MEASURE: Estimate each food item\'s physical dimensions (length × width × height in cm) '
+            'using perspective cues, plate/bowl/container size, and common object knowledge.\n';
 
     String systemPrompt;
     String userText;
@@ -523,6 +548,13 @@ class ApiClient {
         return '$name\nPer 100g: ${m['energy_kcal']}kcal, '
             'protein ${m['protein_g']}g, carbs ${m['carbohydrate_g']}g, fat $fatStr';
       }).join('\n\n');
+
+      // Reasoning schema hint varies by measurement method
+      final reasoningHint = hasArMeasure
+          ? '"reasoning":"ARCore dims LxWxH cm → vol → weight → nutrition"'
+          : (cameraInfo != null && cameraInfo.contains('OPTICS:'))
+              ? '"reasoning":"EXIF FOV-calibrated: ~Wpx x D_cm → ~Wcm; dims LxWxH cm → vol → weight → nutrition"'
+              : '"reasoning":"dims LxWxH cm → vol → weight → nutrition"';
 
       systemPrompt =
           'You are a precise nutritionist with expertise in estimating food portions from photos. '
@@ -543,7 +575,7 @@ class ApiClient {
           '{"food_name":"…","width_cm":float,"length_cm":float,"height_cm":float,'
           '"volume_ml":float,"weight_g":float,'
           '"calories":int,"protein":int,"carbs":int,"fat":int,'
-          '"reasoning":"dims → vol → weight → nutrition"}';
+          '$reasoningHint}';
 
       userText = 'CFS official nutrition data (per 100g):\n$cfsContext\n\n'
           'Estimate the portion from the image and calculate total nutrition.';

@@ -193,42 +193,68 @@ class ChatService {
     'Suggest a healthy snack',
   ];
 
-  // ── 3. RAG Trigger Detection (local keyword match) ───────
+  // ── 3. RAG Trigger Detection (LLM-based) ──────────────────
 
-  /// Detect whether a user message is asking about a specific food's nutrition.
-  /// Returns the food name to search, or null if RAG should not trigger.
+  /// Ask Gemini to decide whether the user is asking about a specific food's
+  /// nutrition and, if so, extract the clean food name for CFS lookup.
   ///
-  /// Uses local keyword matching — zero latency, no extra API call.
-  String? detectFoodQuery(String message) {
-    final lower = message.toLowerCase();
+  /// Returns the food name to search, or null if RAG should not trigger.
+  Future<String?> detectFoodQuery(String message) async {
+    const prompt =
+        'You are a food-query classifier for a nutrition app.\n'
+        'Given a user message, decide whether the user is asking about a '
+        'SPECIFIC food item\'s nutritional information (calories, protein, '
+        'carbs, fat, etc.).\n\n'
+        'Rules:\n'
+        '- If yes, return the clean food name only (no extra words) in the '
+        'original language.\n'
+        '- If the message is general advice, greetings, or not about a '
+        'specific food, return exactly: null\n\n'
+        'Return ONLY a JSON object. Examples:\n'
+        '"梅菜扣肉有什麼營養" → {"food":"梅菜扣肉"}\n'
+        '"雞蛋有幾多蛋白質" → {"food":"雞蛋"}\n'
+        '"How many calories in salmon" → {"food":"salmon"}\n'
+        '"今日食左什麼好" → {"food":null}\n'
+        '"我應該減肥嗎" → {"food":null}\n'
+        '"幫我分析下飲食" → {"food":null}\n';
 
-    // Nutrition-related keywords (Chinese + English)
-    const triggers = [
-      '卡路里', '熱量', '蛋白質', '碳水', '脂肪', '營養', '纖維',
-      '幾多卡', '多少卡', '幾多kcal',
-      'calorie', 'protein', 'carb', 'fat', 'nutrition', 'kcal',
-      'macro', 'fiber', 'sugar', 'sodium',
-    ];
+    try {
+      final body = jsonEncode({
+        'model': AppConfig.visionModel,
+        'max_tokens': 60,
+        'temperature': 0,
+        'messages': [
+          {'role': 'system', 'content': prompt},
+          {'role': 'user', 'content': message},
+        ],
+      });
 
-    final hasTrigger = triggers.any((t) => lower.contains(t));
-    if (!hasTrigger) return null;
+      final response = await http
+          .post(
+            Uri.parse(AppConfig.visionApiUrl),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ${AppConfig.visionApiKey}',
+            },
+            body: body,
+          )
+          .timeout(const Duration(seconds: 10));
 
-    // Extract food name: remove trigger words and common filler
-    var cleaned = message;
-    for (final t in triggers) {
-      cleaned = cleaned.replaceAll(RegExp(t, caseSensitive: false), '');
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        var content =
+            decoded['choices'][0]['message']['content'] as String;
+        content = content.replaceAll(RegExp(r'```json\s*'), '');
+        content = content.replaceAll(RegExp(r'```\s*'), '');
+        content = content.trim();
+        final json = jsonDecode(content) as Map<String, dynamic>;
+        final food = json['food'];
+        if (food is String && food.isNotEmpty) return food;
+      }
+    } catch (_) {
+      // On failure, skip RAG — the main chat still works fine without it
     }
-    // Remove common question words
-    for (final w in [
-      '有', '幾多', '多少', '係', '嘅', '的', '嗎', '？', '?', '呢',
-      'how much', 'how many', 'what is', 'what are', 'does', 'have',
-      'in', 'of', 'the', 'a', 'an', 'is', 'are',
-    ]) {
-      cleaned = cleaned.replaceAll(RegExp(w, caseSensitive: false), '');
-    }
-    cleaned = cleaned.trim();
-    if (cleaned.length < 2) return null;
-    return cleaned;
+    return null;
   }
 
   // ── 4. CFS Food Search ──────────────────────────────────
@@ -282,7 +308,8 @@ class ChatService {
 
       final buf = StringBuffer();
       buf.writeln(
-          '\n[CFS Official Nutrition Data — Hong Kong Centre for Food Safety]');
+          '\n[CFS Official Nutrition Data — Hong Kong Centre for Food Safety (香港食物安全中心)]');
+      buf.writeln('INSTRUCTION: When using the data below, explicitly cite "according to the Hong Kong Centre for Food Safety (CFS) database" (or 「根據香港食物安全中心數據庫」 if replying in Chinese/Cantonese).');
       for (final m in hits) {
         final name =
             '${m['food_name_eng'] ?? ''} (${m['food_name_chi'] ?? ''})';
@@ -308,6 +335,9 @@ class ChatService {
         'You have access to the user\'s real dietary data shown below. '
         'Reference specific dates and numbers when relevant. '
         'Give concise, actionable advice. '
+        'When the user message contains CFS nutrition data, always cite the source '
+        '(「根據香港食物安全中心數據庫」 in Chinese/Cantonese, or '
+        '"according to the Hong Kong Centre for Food Safety (CFS) database" in English). '
         'Reply in the SAME LANGUAGE as the user\'s message.\n\n'
         '$dietContext';
   }
@@ -372,7 +402,9 @@ class ChatService {
       String lineBuffer = '';
 
       await for (final chunk
-          in streamedResponse.stream.transform(utf8.decoder)) {
+          in streamedResponse.stream
+              .transform(utf8.decoder)
+              .timeout(const Duration(seconds: 60))) {
         lineBuffer += chunk;
 
         // Process complete lines

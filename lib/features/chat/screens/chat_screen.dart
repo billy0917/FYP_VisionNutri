@@ -5,6 +5,7 @@
 library;
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
@@ -29,6 +30,7 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isLoadingSuggestions = true;
   bool _isStreaming = false;
   bool _isSearchingRag = false;
+  bool _suggestionsExpanded = false;
   StreamSubscription<String>? _streamSub;
 
   @override
@@ -80,9 +82,9 @@ class _ChatScreenState extends State<ChatScreen> {
     });
     _scrollToBottom();
 
-    // --- CFS RAG check ---
+    // --- CFS RAG check (LLM decides if food lookup is needed) ---
     String? cfsContext;
-    final foodQuery = _chatService.detectFoodQuery(text);
+    final foodQuery = await _chatService.detectFoodQuery(text);
     if (foodQuery != null) {
       setState(() => _isSearchingRag = true);
       cfsContext = await _chatService.searchCfsFood(foodQuery);
@@ -387,45 +389,59 @@ class _ChatScreenState extends State<ChatScreen> {
     if (userSent) return const SizedBox.shrink();
 
     if (_isLoadingSuggestions) {
-      return Container(
-        height: 50,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 14,
-              height: 14,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: ClayColors.primary,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              'Loading suggestions...',
-              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-            ),
-          ],
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: _SuggestionPill(
+          label: 'Loading suggestions...',
+          icon: Icons.hourglass_top_rounded,
+          isLoading: true,
+          onTap: null,
         ),
       );
     }
 
     if (_suggestions.isEmpty) return const SizedBox.shrink();
 
-    return Container(
-      height: 50,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        children: _suggestions
-            .map((s) => Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: ActionChip(
-                    label: Text(s, style: const TextStyle(fontSize: 12)),
-                    onPressed: () => _sendMessage(s),
-                  ),
-                ))
-            .toList(),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Trigger pill
+          _SuggestionPill(
+            label: 'Suggested Questions',
+            icon: _suggestionsExpanded
+                ? Icons.close_rounded
+                : Icons.auto_awesome_rounded,
+            onTap: () {
+              setState(() => _suggestionsExpanded = !_suggestionsExpanded);
+            },
+          ),
+          // Expandable question cards
+          AnimatedSize(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child: _suggestionsExpanded
+                ? Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: List.generate(_suggestions.length, (i) {
+                        return _SuggestionCard(
+                          text: _suggestions[i],
+                          index: i,
+                          onTap: () {
+                            setState(() => _suggestionsExpanded = false);
+                            _sendMessage(_suggestions[i]);
+                          },
+                        );
+                      }),
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
+        ],
       ),
     );
   }
@@ -592,4 +608,210 @@ class _ThinkingDotsState extends State<_ThinkingDots>
       ],
     );
   }
+}
+
+// ── Suggestion pill trigger ──────────────────────────────────
+
+class _SuggestionPill extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool isLoading;
+  final VoidCallback? onTap;
+
+  const _SuggestionPill({
+    required this.label,
+    required this.icon,
+    this.isLoading = false,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              ClayColors.primary.withValues(alpha: 0.12),
+              ClayColors.primary.withValues(alpha: 0.06),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: ClayColors.primary.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isLoading)
+              SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: ClayColors.primary,
+                ),
+              )
+            else
+              Icon(icon, size: 18, color: ClayColors.primary),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: ClayColors.primary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Suggestion card with staggered animation ─────────────────
+
+class _SuggestionCard extends StatefulWidget {
+  final String text;
+  final int index;
+  final VoidCallback onTap;
+
+  const _SuggestionCard({
+    required this.text,
+    required this.index,
+    required this.onTap,
+  });
+
+  @override
+  State<_SuggestionCard> createState() => _SuggestionCardState();
+}
+
+class _SuggestionCardState extends State<_SuggestionCard>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double> _fade;
+  late Animation<Offset> _slide;
+  late Animation<double> _scale;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+
+    _fade = CurvedAnimation(
+      parent: _ctrl,
+      curve: const Interval(0.0, 0.8, curve: Curves.easeOut),
+    );
+    _slide = Tween<Offset>(
+      begin: const Offset(0, 0.3),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _ctrl,
+      curve: Curves.easeOutCubic,
+    ));
+    _scale = Tween<double>(begin: 0.9, end: 1.0).animate(CurvedAnimation(
+      parent: _ctrl,
+      curve: Curves.easeOutBack,
+    ));
+
+    // Staggered start per index
+    Future.delayed(Duration(milliseconds: 80 * widget.index), () {
+      if (mounted) _ctrl.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Rotate hue slightly per card for visual variety
+    final hueShift = widget.index * 12.0;
+    final baseHsl = HSLColor.fromColor(ClayColors.primary);
+    final cardColor = baseHsl
+        .withHue((baseHsl.hue + hueShift) % 360)
+        .toColor();
+
+    return FadeTransition(
+      opacity: _fade,
+      child: SlideTransition(
+        position: _slide,
+        child: ScaleTransition(
+          scale: _scale,
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: widget.onTap,
+                borderRadius: BorderRadius.circular(14),
+                splashColor: cardColor.withValues(alpha: 0.15),
+                child: Ink(
+                  decoration: BoxDecoration(
+                    color: cardColor.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: cardColor.withValues(alpha: 0.2),
+                    ),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  child: Row(
+                    children: [
+                      Transform.rotate(
+                        angle: (widget.index * math.pi / 6),
+                        child: Icon(
+                          _questionIcons[
+                              widget.index % _questionIcons.length],
+                          size: 18,
+                          color: cardColor.withValues(alpha: 0.7),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          widget.text,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey[800],
+                            height: 1.3,
+                          ),
+                        ),
+                      ),
+                      Icon(
+                        Icons.arrow_forward_ios_rounded,
+                        size: 12,
+                        color: Colors.grey[400],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  static const _questionIcons = [
+    Icons.restaurant_rounded,
+    Icons.analytics_outlined,
+    Icons.fitness_center_rounded,
+    Icons.local_fire_department_rounded,
+  ];
 }
