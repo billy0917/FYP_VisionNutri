@@ -60,7 +60,7 @@ class _ManualFoodEntryScreenState extends State<ManualFoodEntryScreen> {
         'carbs': double.parse(_carbsController.text),
         'fat': double.parse(_fatController.text),
         'meal_type': _selectedMealType,
-        'logged_at': DateTime.now().toIso8601String(),
+        'logged_at': DateTime.now().toUtc().toIso8601String(),
       });
 
       if (mounted) {

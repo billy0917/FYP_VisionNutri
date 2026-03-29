@@ -1,4 +1,4 @@
-﻿/// SmartDiet AI - Camera Screen
+/// SmartDiet AI - Camera Screen
 ///
 /// Screen for capturing food images and getting AI analysis.
 library;
@@ -37,6 +37,12 @@ class _CameraScreenState extends State<CameraScreen> {
   bool _isAnalyzing = false;
   bool _isPreparingSegmentation = false;
   FoodAnalysisResult? _analysisResult;
+  // Editable overrides (populated when user manually edits analysis results)
+  String? _editedFoodName;
+  int? _editedCalories;
+  int? _editedProtein;
+  int? _editedCarbs;
+  int? _editedFat;
   String? _selectedMealType;
   String? _cameraInfo; // EXIF-derived description for LLM
   ArMeasurement? _arMeasurement; // ARCore measurement result
@@ -44,6 +50,24 @@ class _CameraScreenState extends State<CameraScreen> {
   double? _previewAspectRatio;
 
   final List<String> _mealTypes = ['Breakfast', 'Lunch', 'Dinner', 'Snack'];
+
+  void _showBottomSnackBar(
+    String message, {
+    Color? backgroundColor,
+    Duration duration = const Duration(seconds: 2),
+  }) {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.fixed,
+          content: Text(message),
+          backgroundColor: backgroundColor,
+          duration: duration,
+        ),
+      );
+  }
 
   Future<void> _pickImage(ImageSource source) async {
     try {
@@ -84,11 +108,9 @@ class _CameraScreenState extends State<CameraScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error picking image: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
+        _showBottomSnackBar(
+          'Error picking image: ${e.toString()}',
+          backgroundColor: Colors.red,
         );
       }
     }
@@ -165,11 +187,9 @@ class _CameraScreenState extends State<CameraScreen> {
       });
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Analysis failed: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
+        _showBottomSnackBar(
+          'Analysis failed: ${e.toString()}',
+          backgroundColor: Colors.red,
         );
       }
     } finally {
@@ -179,11 +199,9 @@ class _CameraScreenState extends State<CameraScreen> {
 
   Future<void> _saveFoodLog() async {
     if (_analysisResult == null || _selectedMealType == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please select a meal type'),
-          backgroundColor: Colors.orange,
-        ),
+      _showBottomSnackBar(
+        'Please select a meal type',
+        backgroundColor: Colors.orange,
       );
       return;
     }
@@ -192,34 +210,30 @@ class _CameraScreenState extends State<CameraScreen> {
       // Save to Supabase (only store analysis result, exclude potentially missing fields)
       await SupabaseService.client.from('food_logs').insert({
         'user_id': SupabaseService.currentUser!.id,
-        'food_name': _analysisResult!.foodName,
-        'calories': _analysisResult!.calories,
-        'protein': _analysisResult!.protein,
-        'carbs': _analysisResult!.carbs,
-        'fat': _analysisResult!.fat,
+        'food_name': _editedFoodName ?? _analysisResult!.foodName,
+        'calories': _editedCalories ?? _analysisResult!.calories,
+        'protein': _editedProtein ?? _analysisResult!.protein,
+        'carbs': _editedCarbs ?? _analysisResult!.carbs,
+        'fat': _editedFat ?? _analysisResult!.fat,
         'meal_type': _selectedMealType!.toLowerCase(),
         'local_image_path': _localImagePath,
         'ai_reasoning': _analysisResult!.reasoning,
-        'logged_at': DateTime.now().toIso8601String(),
+        'logged_at': DateTime.now().toUtc().toIso8601String(),
       });
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Meal logged successfully! 🎉'),
-            backgroundColor: Colors.green,
-          ),
+        _showBottomSnackBar(
+          'Meal logged successfully! 🎉',
+          backgroundColor: Colors.green,
         );
         // Notify Dashboard to reload
         widget.onSaved?.call();
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to save: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
+        _showBottomSnackBar(
+          'Failed to save: ${e.toString()}',
+          backgroundColor: Colors.red,
         );
       }
       return;
@@ -229,12 +243,96 @@ class _CameraScreenState extends State<CameraScreen> {
     setState(() {
       _imageBytes = null;
       _analysisResult = null;
+      _editedFoodName = null;
+      _editedCalories = null;
+      _editedProtein = null;
+      _editedCarbs = null;
+      _editedFat = null;
       _selectedMealType = null;
       _cameraInfo = null;
       _arMeasurement = null;
       _segmentationResult = null;
       _previewAspectRatio = null;
     });
+  }
+
+  Future<void> _editAnalysisResult() async {
+    final result = _analysisResult!;
+    final nameCtrl = TextEditingController(text: _editedFoodName ?? result.foodName);
+    final calCtrl = TextEditingController(text: (_editedCalories ?? result.calories).toString());
+    final proteinCtrl = TextEditingController(text: (_editedProtein ?? result.protein).toString());
+    final carbsCtrl = TextEditingController(text: (_editedCarbs ?? result.carbs).toString());
+    final fatCtrl = TextEditingController(text: (_editedFat ?? result.fat).toString());
+
+    final edited = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Edit Nutrition'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameCtrl,
+                decoration: const InputDecoration(labelText: 'Food Name'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: calCtrl,
+                decoration: const InputDecoration(labelText: 'Calories (kcal)', suffixText: 'kcal'),
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: proteinCtrl,
+                decoration: const InputDecoration(labelText: 'Protein (g)', suffixText: 'g'),
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: carbsCtrl,
+                decoration: const InputDecoration(labelText: 'Carbs (g)', suffixText: 'g'),
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: fatCtrl,
+                decoration: const InputDecoration(labelText: 'Fat (g)', suffixText: 'g'),
+                keyboardType: TextInputType.number,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(ctx, {
+                'food_name': nameCtrl.text.trim().isEmpty ? result.foodName : nameCtrl.text.trim(),
+                'calories': int.tryParse(calCtrl.text) ?? result.calories,
+                'protein': int.tryParse(proteinCtrl.text) ?? result.protein,
+                'carbs': int.tryParse(carbsCtrl.text) ?? result.carbs,
+                'fat': int.tryParse(fatCtrl.text) ?? result.fat,
+              });
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (edited != null && mounted) {
+      setState(() {
+        _editedFoodName = edited['food_name'] as String;
+        _editedCalories = edited['calories'] as int;
+        _editedProtein = edited['protein'] as int;
+        _editedCarbs = edited['carbs'] as int;
+        _editedFat = edited['fat'] as int;
+      });
+    }
   }
 
   /// Extract useful EXIF camera metadata and format as a one-line LLM context.
@@ -609,7 +707,7 @@ class _CameraScreenState extends State<CameraScreen> {
           ),
           const SizedBox(height: 16),
           Text(
-            result.foodName,
+            _editedFoodName ?? result.foodName,
             style: Theme.of(
               context,
             ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
@@ -625,6 +723,11 @@ class _CameraScreenState extends State<CameraScreen> {
               ),
             ),
           ],
+          if (_editedCalories != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text('(manually edited)', style: TextStyle(fontSize: 11, color: Colors.orange.shade700, fontStyle: FontStyle.italic)),
+            ),
           const SizedBox(height: 16),
           // Macros grid
           Row(
@@ -632,24 +735,37 @@ class _CameraScreenState extends State<CameraScreen> {
             children: [
               _buildMacroItem(
                 'Calories',
-                '${result.calories}',
+                '${_editedCalories ?? result.calories}',
                 'kcal',
                 ClayColors.calorie,
               ),
               _buildMacroItem(
                 'Protein',
-                '${result.protein}',
+                '${_editedProtein ?? result.protein}',
                 'g',
                 ClayColors.protein,
               ),
               _buildMacroItem(
                 'Carbs',
-                '${result.carbs}',
+                '${_editedCarbs ?? result.carbs}',
                 'g',
                 ClayColors.carbs,
               ),
-              _buildMacroItem('Fat', '${result.fat}', 'g', ClayColors.fat),
+              _buildMacroItem('Fat', '${_editedFat ?? result.fat}', 'g', ClayColors.fat),
             ],
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _editAnalysisResult,
+              icon: const Icon(Icons.edit, size: 16),
+              label: const Text('Edit Nutrition'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.orange.shade700,
+                side: BorderSide(color: Colors.orange.shade300),
+              ),
+            ),
           ),
           if (result.reasoning.isNotEmpty) ...[
             const SizedBox(height: 16),

@@ -1,4 +1,4 @@
-﻿/// SmartDiet AI - Dashboard Screen
+/// SmartDiet AI - Dashboard Screen
 /// 
 /// Main home screen showing daily stats, gamification, and quick actions.
 library;
@@ -38,6 +38,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
   
   List<Map<String, dynamic>> _recentMeals = [];
   bool _isLoading = true;
+
+  void _showBottomSnackBar(
+    String message, {
+    Color? backgroundColor,
+    Duration duration = const Duration(seconds: 2),
+  }) {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.fixed,
+          content: Text(message),
+          backgroundColor: backgroundColor,
+          duration: duration,
+        ),
+      );
+  }
 
   @override
   void initState() {
@@ -187,13 +205,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  /// Hong Kong time (UTC+8).
+  static DateTime _hkt() => DateTime.now().toUtc().add(const Duration(hours: 8));
+
   Future<void> _loadDashboardData() async {
     setState(() => _isLoading = true);
 
     try {
       final userId = SupabaseService.currentUser!.id;
-      final today = DateTime.now();
-      final startOfDay = DateTime(today.year, today.month, today.day);
+      final today = _hkt();
+      final startOfDay = DateTime.utc(today.year, today.month, today.day)
+          .subtract(const Duration(hours: 8));
 
       // Load today's food logs
       final foodLogsResponse = await SupabaseService.client
@@ -234,11 +256,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to load data: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
+        _showBottomSnackBar(
+          'Failed to load data: ${e.toString()}',
+          backgroundColor: Colors.red,
         );
       }
     }
@@ -271,7 +291,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildGreetingHeader() {
-    final hour = DateTime.now().hour;
+    final now = _hkt();
+    final hour = now.hour;
     final String greeting;
     if (hour < 12) {
       greeting = 'Good morning!';
@@ -281,7 +302,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       greeting = 'Good evening!';
     }
     const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    final now = DateTime.now();
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     final dateStr = '${weekdays[now.weekday - 1]}, ${months[now.month - 1]} ${now.day}';
 
@@ -601,7 +621,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                     confirmDismiss: (_) => _confirmDelete(context, meal['food_name']),
                     onDismissed: (_) => _deleteMeal(mealId, meal),
-                    child: _buildMealCard(meal),
+                    child: GestureDetector(
+                      onTap: () => _editMeal(index),
+                      child: _buildMealCard(meal),
+                    ),
                   ),
                 );
                 widgets.add(const SizedBox(height: 8));
@@ -616,7 +639,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String _formatTime(String? isoString) {
     if (isoString == null) return '';
     try {
-      final dateTime = DateTime.parse(isoString).toLocal();
+      // Parse UTC timestamp and convert to HKT (UTC+8)
+      final dateTime = DateTime.parse(isoString).toUtc().add(const Duration(hours: 8));
       final hour = dateTime.hour;
       final minute = dateTime.minute.toString().padLeft(2, '0');
       final period = hour >= 12 ? 'PM' : 'AM';
@@ -679,23 +703,140 @@ class _DashboardScreenState extends State<DashboardScreen> {
       });
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Meal deleted'),
-            backgroundColor: Colors.red,
-            duration: Duration(seconds: 2),
-          ),
+        _showBottomSnackBar(
+          'Meal deleted',
+          backgroundColor: Colors.red,
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to delete: $e'), backgroundColor: Colors.red),
+        _showBottomSnackBar(
+          'Failed to delete: $e',
+          backgroundColor: Colors.red,
         );
       }
       // Reload original state if deletion fails
       _loadDashboardData();
     }
+  }
+
+  Future<void> _editMeal(int index) async {
+    final meal = _recentMeals[index];
+    final mealId = meal['id'] as String?;
+    if (mealId == null) return;
+
+    final result = await _showEditNutritionDialog(
+      context,
+      foodName: meal['food_name'] as String? ?? '',
+      calories: (meal['calories'] as int?) ?? 0,
+      protein: (meal['protein'] as num?)?.toDouble() ?? 0.0,
+      carbs: (meal['carbs'] as num?)?.toDouble() ?? 0.0,
+      fat: (meal['fat'] as num?)?.toDouble() ?? 0.0,
+    );
+    if (result == null) return;
+
+    try {
+      await SupabaseService.client.from('food_logs').update({
+        'food_name': result['food_name'],
+        'calories': result['calories'],
+        'protein': result['protein'],
+        'carbs': result['carbs'],
+        'fat': result['fat'],
+      }).eq('id', mealId);
+
+      _loadDashboardData();
+
+      if (mounted) {
+        _showBottomSnackBar(
+          'Meal updated',
+          backgroundColor: Colors.green,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        _showBottomSnackBar(
+          'Failed to update: $e',
+          backgroundColor: Colors.red,
+        );
+      }
+    }
+  }
+
+  /// Shows a dialog to edit food name and nutrition values.
+  /// Returns a Map with the edited values, or null if cancelled.
+  static Future<Map<String, dynamic>?> _showEditNutritionDialog(
+    BuildContext context, {
+    required String foodName,
+    required int calories,
+    required double protein,
+    required double carbs,
+    required double fat,
+  }) {
+    final nameCtrl = TextEditingController(text: foodName);
+    final calCtrl = TextEditingController(text: calories.toString());
+    final proteinCtrl = TextEditingController(text: protein.toStringAsFixed(1));
+    final carbsCtrl = TextEditingController(text: carbs.toStringAsFixed(1));
+    final fatCtrl = TextEditingController(text: fat.toStringAsFixed(1));
+
+    return showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Edit Nutrition'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameCtrl,
+                decoration: const InputDecoration(labelText: 'Food Name'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: calCtrl,
+                decoration: const InputDecoration(labelText: 'Calories (kcal)', suffixText: 'kcal'),
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: proteinCtrl,
+                decoration: const InputDecoration(labelText: 'Protein (g)', suffixText: 'g'),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: carbsCtrl,
+                decoration: const InputDecoration(labelText: 'Carbs (g)', suffixText: 'g'),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: fatCtrl,
+                decoration: const InputDecoration(labelText: 'Fat (g)', suffixText: 'g'),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(ctx, {
+                'food_name': nameCtrl.text.trim().isEmpty ? foodName : nameCtrl.text.trim(),
+                'calories': int.tryParse(calCtrl.text) ?? calories,
+                'protein': double.tryParse(proteinCtrl.text) ?? protein,
+                'carbs': double.tryParse(carbsCtrl.text) ?? carbs,
+                'fat': double.tryParse(fatCtrl.text) ?? fat,
+              });
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildMealCard(Map<String, dynamic> meal) {
@@ -746,6 +887,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             color: Colors.grey[500],
                           ),
                     ),
+                    const SizedBox(width: 4),
+                    Icon(Icons.edit_outlined, size: 14, color: Colors.grey[400]),
                   ],
                 ),
                 const SizedBox(height: 4),
