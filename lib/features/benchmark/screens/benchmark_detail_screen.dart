@@ -133,7 +133,9 @@ class _BenchmarkDetailScreenState extends State<BenchmarkDetailScreen> {
       if (wTag != null && hTag != null) parts.add('$wTag×${hTag}px');
       final make = tags['Image Make'];
       final model = tags['Image Model'];
-      if (make != null || model != null) parts.add('${make ?? ''} ${model ?? ''}'.trim());
+      if (make != null || model != null) {
+        parts.add('${make ?? ''} ${model ?? ''}'.trim());
+      }
       final dist = tags['EXIF SubjectDistance'];
       if (dist != null) parts.add('subject distance ${dist}m');
 
@@ -142,7 +144,8 @@ class _BenchmarkDetailScreenState extends State<BenchmarkDetailScreen> {
       // the model a concrete formula to convert pixel widths → real cm.
       if (fl35Tag != null && wTag != null) {
         final fl35 = double.tryParse(
-            fl35Tag.toString().split('/').first.trim());
+          fl35Tag.toString().split('/').first.trim(),
+        );
         final wPx = double.tryParse(wTag.toString());
         if (fl35 != null && fl35 > 0 && wPx != null && wPx > 0) {
           // 35mm full-frame sensor half-width = 18mm
@@ -153,7 +156,7 @@ class _BenchmarkDetailScreenState extends State<BenchmarkDetailScreen> {
             'OPTICS: horizontal FOV=${fovDeg.toStringAsFixed(1)}°, '
             '${wPx.toInt()}px wide → '
             '${degPerPx.toStringAsFixed(4)}°/px. '
-            'To convert food container width: '
+            'To convert the main object width: '
             'estimate subject distance D_cm from scene depth cues, '
             'then real_width_cm = '
             '2 × D_cm × tan(container_width_px × ${degPerPx.toStringAsFixed(4)} × π/360). '
@@ -190,7 +193,8 @@ class _BenchmarkDetailScreenState extends State<BenchmarkDetailScreen> {
   // ── Ground truth ─────────────────────────────────────────
 
   bool _validateGroundTruth() {
-    final dimOk = _nameCtrl.text.trim().isNotEmpty &&
+    final dimOk =
+        _nameCtrl.text.trim().isNotEmpty &&
         double.tryParse(_widthCtrl.text) != null &&
         double.tryParse(_lengthCtrl.text) != null &&
         double.tryParse(_heightCtrl.text) != null;
@@ -207,9 +211,13 @@ class _BenchmarkDetailScreenState extends State<BenchmarkDetailScreen> {
   void _saveGroundTruth() {
     if (!_validateGroundTruth()) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_isFood
-            ? 'Please fill all ground truth fields with valid numbers'
-            : 'Please fill name and dimensions (W×L×H) with valid numbers')),
+        SnackBar(
+          content: Text(
+            _isFood
+                ? 'Please fill all ground truth fields with valid numbers'
+                : 'Please fill name and dimensions (W×L×H) with valid numbers',
+          ),
+        ),
       );
       return;
     }
@@ -226,18 +234,18 @@ class _BenchmarkDetailScreenState extends State<BenchmarkDetailScreen> {
       fat: int.tryParse(_fatCtrl.text),
     );
     _autoSave();
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Ground truth saved')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Ground truth saved')));
   }
 
   // ── Run estimation methods ───────────────────────────────
 
   Future<void> _runAllMethods() async {
     if (_imageBytes == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Take a photo first')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Take a photo first')));
       return;
     }
     if (_item.groundTruth == null) {
@@ -245,18 +253,26 @@ class _BenchmarkDetailScreenState extends State<BenchmarkDetailScreen> {
       if (_item.groundTruth == null) return;
     }
 
-    setState(() { _running = true; _runStatus = ''; });
+    setState(() {
+      _running = true;
+      _runStatus = '';
+    });
     final b64 = base64Encode(_imageBytes!);
 
     // Method A: Pure Gemini (+ RAG if food)
     try {
-      setState(() => _runStatus = _isFood
-          ? 'Running Method A (pure Gemini + RAG)...'
-          : 'Running Method A (pure Gemini, dims only)...');
+      setState(
+        () => _runStatus = _isFood
+            ? 'Running Method A (pure Gemini + RAG)...'
+            : 'Running Method A (pure Gemini, dims only)...',
+      );
       _item.methodA = await _service.runMethodA(b64, isFood: _isFood);
     } catch (e) {
       _item.methodA = EstimationResult(
-        calories: 0, protein: 0, carbs: 0, fat: 0,
+        calories: 0,
+        protein: 0,
+        carbs: 0,
+        fat: 0,
         reasoning: 'Error: $e',
       );
     }
@@ -265,14 +281,22 @@ class _BenchmarkDetailScreenState extends State<BenchmarkDetailScreen> {
 
     // Method B: Gemini + EXIF (+ RAG if food)
     try {
-      setState(() => _runStatus = _isFood
-          ? 'Running Method B (Gemini + EXIF + RAG)...'
-          : 'Running Method B (Gemini + EXIF, dims only)...');
-      _item.methodB = await _service.runMethodB(b64, _item.cameraInfo ?? '',
-          isFood: _isFood);
+      setState(
+        () => _runStatus = _isFood
+            ? 'Running Method B (Gemini + EXIF + RAG)...'
+            : 'Running Method B (Gemini + EXIF, dims only)...',
+      );
+      _item.methodB = await _service.runMethodB(
+        b64,
+        _item.cameraInfo ?? '',
+        isFood: _isFood,
+      );
     } catch (e) {
       _item.methodB = EstimationResult(
-        calories: 0, protein: 0, carbs: 0, fat: 0,
+        calories: 0,
+        protein: 0,
+        carbs: 0,
+        fat: 0,
         reasoning: 'Error: $e',
       );
     }
@@ -282,9 +306,11 @@ class _BenchmarkDetailScreenState extends State<BenchmarkDetailScreen> {
     // Method C: ARCore + Gemini (+ RAG if food)
     if (_item.arMeasurement != null) {
       try {
-        setState(() => _runStatus = _isFood
-            ? 'Running Method C (ARCore + Gemini + RAG)...'
-            : 'Running Method C (ARCore + Gemini, dims only)...');
+        setState(
+          () => _runStatus = _isFood
+              ? 'Running Method C (ARCore + Gemini + RAG)...'
+              : 'Running Method C (ARCore + Gemini, dims only)...',
+        );
         _item.methodC = await _service.runMethodC(
           b64,
           _item.cameraInfo ?? '',
@@ -293,19 +319,30 @@ class _BenchmarkDetailScreenState extends State<BenchmarkDetailScreen> {
         );
       } catch (e) {
         _item.methodC = EstimationResult(
-          calories: 0, protein: 0, carbs: 0, fat: 0,
+          calories: 0,
+          protein: 0,
+          carbs: 0,
+          fat: 0,
           reasoning: 'Error: $e',
         );
       }
     } else {
       _item.methodC = EstimationResult(
-        calories: 0, protein: 0, carbs: 0, fat: 0,
+        calories: 0,
+        protein: 0,
+        carbs: 0,
+        fat: 0,
         reasoning: 'Skipped — no AR measurement available',
       );
     }
 
     await _autoSave();
-    if (mounted) setState(() { _running = false; _runStatus = 'All methods complete'; });
+    if (mounted) {
+      setState(() {
+        _running = false;
+        _runStatus = 'All methods complete';
+      });
+    }
   }
 
   Future<void> _autoSave() async {
@@ -342,7 +379,9 @@ class _BenchmarkDetailScreenState extends State<BenchmarkDetailScreen> {
             const SizedBox(height: 20),
             _buildRunSection(),
             const SizedBox(height: 20),
-            if (_item.methodA != null || _item.methodB != null || _item.methodC != null)
+            if (_item.methodA != null ||
+                _item.methodB != null ||
+                _item.methodC != null)
               _buildResultsSection(),
           ],
         ),
@@ -364,7 +403,11 @@ class _BenchmarkDetailScreenState extends State<BenchmarkDetailScreen> {
             if (_imageBytes != null)
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
-                child: Image.memory(_imageBytes!, height: 200, fit: BoxFit.cover),
+                child: Image.memory(
+                  _imageBytes!,
+                  height: 200,
+                  fit: BoxFit.cover,
+                ),
               )
             else
               Container(
@@ -373,11 +416,16 @@ class _BenchmarkDetailScreenState extends State<BenchmarkDetailScreen> {
                   color: Colors.grey[200],
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Center(child: Icon(Icons.photo_camera, size: 48, color: Colors.grey)),
+                child: const Center(
+                  child: Icon(Icons.photo_camera, size: 48, color: Colors.grey),
+                ),
               ),
             const SizedBox(height: 8),
             if (_item.cameraInfo != null)
-              Text(_item.cameraInfo!, style: Theme.of(context).textTheme.bodySmall),
+              Text(
+                _item.cameraInfo!,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
             const SizedBox(height: 8),
             ElevatedButton.icon(
               onPressed: _takePhoto,
@@ -400,7 +448,10 @@ class _BenchmarkDetailScreenState extends State<BenchmarkDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('AR Measurement', style: Theme.of(context).textTheme.titleMedium),
+            Text(
+              'AR Measurement',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
             const SizedBox(height: 8),
             if (ar != null)
               Text(
@@ -410,7 +461,10 @@ class _BenchmarkDetailScreenState extends State<BenchmarkDetailScreen> {
                 'Volume: ~${ar.volumeMl?.round()} mL',
               )
             else
-              const Text('Not yet measured', style: TextStyle(color: Colors.grey)),
+              const Text(
+                'Not yet measured',
+                style: TextStyle(color: Colors.grey),
+              ),
             const SizedBox(height: 8),
             ElevatedButton.icon(
               onPressed: _runArMeasurement,
@@ -432,49 +486,64 @@ class _BenchmarkDetailScreenState extends State<BenchmarkDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Ground Truth', style: Theme.of(context).textTheme.titleMedium),
+            Text(
+              'Ground Truth',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
             const SizedBox(height: 8),
             // Food / Object toggle
-            Row(children: [
-              const Text('Type: '),
-              ChoiceChip(
-                label: const Text('Food'),
-                selected: _isFood,
-                onSelected: (v) => setState(() => _isFood = true),
-              ),
-              const SizedBox(width: 8),
-              ChoiceChip(
-                label: const Text('Object'),
-                selected: !_isFood,
-                onSelected: (v) => setState(() => _isFood = false),
-              ),
-            ]),
+            Row(
+              children: [
+                const Text('Type: '),
+                ChoiceChip(
+                  label: const Text('Food'),
+                  selected: _isFood,
+                  onSelected: (v) => setState(() => _isFood = true),
+                ),
+                const SizedBox(width: 8),
+                ChoiceChip(
+                  label: const Text('Object'),
+                  selected: !_isFood,
+                  onSelected: (v) => setState(() => _isFood = false),
+                ),
+              ],
+            ),
             const SizedBox(height: 8),
-            _textField(_nameCtrl, _isFood ? 'Food name' : 'Object name', TextInputType.text),
+            _textField(
+              _nameCtrl,
+              _isFood ? 'Food name' : 'Object name',
+              TextInputType.text,
+            ),
             const SizedBox(height: 8),
             Text('Dimensions', style: Theme.of(context).textTheme.labelLarge),
-            Row(children: [
-              Expanded(child: _numField(_widthCtrl, 'W (cm)')),
-              const SizedBox(width: 8),
-              Expanded(child: _numField(_lengthCtrl, 'L (cm)')),
-              const SizedBox(width: 8),
-              Expanded(child: _numField(_heightCtrl, 'H (cm)')),
-            ]),
+            Row(
+              children: [
+                Expanded(child: _numField(_widthCtrl, 'W (cm)')),
+                const SizedBox(width: 8),
+                Expanded(child: _numField(_lengthCtrl, 'L (cm)')),
+                const SizedBox(width: 8),
+                Expanded(child: _numField(_heightCtrl, 'H (cm)')),
+              ],
+            ),
             if (_isFood) ...[
               const SizedBox(height: 8),
               _numField(_weightCtrl, 'Weight (g)'),
               const SizedBox(height: 8),
               Text('Nutrition', style: Theme.of(context).textTheme.labelLarge),
-              Row(children: [
-                Expanded(child: _numField(_calCtrl, 'Cal')),
-                const SizedBox(width: 8),
-                Expanded(child: _numField(_proteinCtrl, 'Protein (g)')),
-              ]),
-              Row(children: [
-                Expanded(child: _numField(_carbsCtrl, 'Carbs (g)')),
-                const SizedBox(width: 8),
-                Expanded(child: _numField(_fatCtrl, 'Fat (g)')),
-              ]),
+              Row(
+                children: [
+                  Expanded(child: _numField(_calCtrl, 'Cal')),
+                  const SizedBox(width: 8),
+                  Expanded(child: _numField(_proteinCtrl, 'Protein (g)')),
+                ],
+              ),
+              Row(
+                children: [
+                  Expanded(child: _numField(_carbsCtrl, 'Carbs (g)')),
+                  const SizedBox(width: 8),
+                  Expanded(child: _numField(_fatCtrl, 'Fat (g)')),
+                ],
+              ),
             ],
             const SizedBox(height: 8),
             OutlinedButton(
@@ -528,18 +597,20 @@ class _BenchmarkDetailScreenState extends State<BenchmarkDetailScreen> {
               Text(_runStatus, style: Theme.of(context).textTheme.bodySmall),
             ] else
               ElevatedButton.icon(
-                onPressed:
-                    (_imageBytes != null) ? _runAllMethods : null,
+                onPressed: (_imageBytes != null) ? _runAllMethods : null,
                 icon: const Icon(Icons.play_arrow),
                 label: const Text('Run All 3 Methods'),
               ),
             if (_runStatus.isNotEmpty && !_running)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
-                child: Text(_runStatus,
-                    style: TextStyle(
-                        color: Colors.green[700],
-                        fontWeight: FontWeight.w500)),
+                child: Text(
+                  _runStatus,
+                  style: TextStyle(
+                    color: Colors.green[700],
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
               ),
           ],
         ),
@@ -556,7 +627,10 @@ class _BenchmarkDetailScreenState extends State<BenchmarkDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Results Comparison', style: Theme.of(context).textTheme.titleMedium),
+            Text(
+              'Results Comparison',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
             const SizedBox(height: 12),
             _buildComparisonTable(),
             if (_item.methodA?.reasoning.isNotEmpty == true) ...[
@@ -594,7 +668,8 @@ class _BenchmarkDetailScreenState extends State<BenchmarkDetailScreen> {
       );
     }
 
-    String fmt(num? v) => v == null ? '--' : (v is double ? v.toStringAsFixed(1) : v.toString());
+    String fmt(num? v) =>
+        v == null ? '--' : (v is double ? v.toStringAsFixed(1) : v.toString());
 
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -602,22 +677,88 @@ class _BenchmarkDetailScreenState extends State<BenchmarkDetailScreen> {
         defaultColumnWidth: const FixedColumnWidth(60),
         border: TableBorder.all(color: Colors.grey.shade300),
         children: [
-          TableRow(children: [
-            cell('', header: true),
-            cell('GT', header: true, bg: Colors.grey[100]),
-            cell('A', header: true, bg: Colors.blue[50]),
-            cell('B', header: true, bg: Colors.orange[50]),
-            cell('C', header: true, bg: Colors.green[50]),
-          ]),
-          _tableRow('W (cm)', gt?.widthCm, a?.widthCm, b?.widthCm, c?.widthCm, cell, fmt),
-          _tableRow('L (cm)', gt?.lengthCm, a?.lengthCm, b?.lengthCm, c?.lengthCm, cell, fmt),
-          _tableRow('H (cm)', gt?.heightCm, a?.heightCm, b?.heightCm, c?.heightCm, cell, fmt),
+          TableRow(
+            children: [
+              cell('', header: true),
+              cell('GT', header: true, bg: Colors.grey[100]),
+              cell('A', header: true, bg: Colors.blue[50]),
+              cell('B', header: true, bg: Colors.orange[50]),
+              cell('C', header: true, bg: Colors.green[50]),
+            ],
+          ),
+          _tableRow(
+            'W (cm)',
+            gt?.widthCm,
+            a?.widthCm,
+            b?.widthCm,
+            c?.widthCm,
+            cell,
+            fmt,
+          ),
+          _tableRow(
+            'L (cm)',
+            gt?.lengthCm,
+            a?.lengthCm,
+            b?.lengthCm,
+            c?.lengthCm,
+            cell,
+            fmt,
+          ),
+          _tableRow(
+            'H (cm)',
+            gt?.heightCm,
+            a?.heightCm,
+            b?.heightCm,
+            c?.heightCm,
+            cell,
+            fmt,
+          ),
           if (_isFood) ...[
-            _tableRow('Wt (g)', gt?.weightG, a?.weightG, b?.weightG, c?.weightG, cell, fmt),
-            _tableRow('Cal', gt?.calories?.toDouble(), a?.calories.toDouble(), b?.calories.toDouble(), c?.calories.toDouble(), cell, fmt),
-            _tableRow('Prot', gt?.protein?.toDouble(), a?.protein.toDouble(), b?.protein.toDouble(), c?.protein.toDouble(), cell, fmt),
-            _tableRow('Carb', gt?.carbs?.toDouble(), a?.carbs.toDouble(), b?.carbs.toDouble(), c?.carbs.toDouble(), cell, fmt),
-            _tableRow('Fat', gt?.fat?.toDouble(), a?.fat.toDouble(), b?.fat.toDouble(), c?.fat.toDouble(), cell, fmt),
+            _tableRow(
+              'Wt (g)',
+              gt?.weightG,
+              a?.weightG,
+              b?.weightG,
+              c?.weightG,
+              cell,
+              fmt,
+            ),
+            _tableRow(
+              'Cal',
+              gt?.calories?.toDouble(),
+              a?.calories.toDouble(),
+              b?.calories.toDouble(),
+              c?.calories.toDouble(),
+              cell,
+              fmt,
+            ),
+            _tableRow(
+              'Prot',
+              gt?.protein?.toDouble(),
+              a?.protein.toDouble(),
+              b?.protein.toDouble(),
+              c?.protein.toDouble(),
+              cell,
+              fmt,
+            ),
+            _tableRow(
+              'Carb',
+              gt?.carbs?.toDouble(),
+              a?.carbs.toDouble(),
+              b?.carbs.toDouble(),
+              c?.carbs.toDouble(),
+              cell,
+              fmt,
+            ),
+            _tableRow(
+              'Fat',
+              gt?.fat?.toDouble(),
+              a?.fat.toDouble(),
+              b?.fat.toDouble(),
+              c?.fat.toDouble(),
+              cell,
+              fmt,
+            ),
           ],
         ],
       ),
@@ -633,20 +774,25 @@ class _BenchmarkDetailScreenState extends State<BenchmarkDetailScreen> {
     Widget Function(String, {bool header, Color? bg}) cell,
     String Function(num?) fmt,
   ) {
-    return TableRow(children: [
-      cell(label, header: true),
-      cell(fmt(gtVal), bg: Colors.grey[50]),
-      cell(fmt(aVal), bg: Colors.blue[50]),
-      cell(fmt(bVal), bg: Colors.orange[50]),
-      cell(fmt(cVal), bg: Colors.green[50]),
-    ]);
+    return TableRow(
+      children: [
+        cell(label, header: true),
+        cell(fmt(gtVal), bg: Colors.grey[50]),
+        cell(fmt(aVal), bg: Colors.blue[50]),
+        cell(fmt(bVal), bg: Colors.orange[50]),
+        cell(fmt(cVal), bg: Colors.green[50]),
+      ],
+    );
   }
 
   Widget _reasoningTile(String method, String reasoning) {
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: ExpansionTile(
-        title: Text('Method $method reasoning', style: const TextStyle(fontSize: 13)),
+        title: Text(
+          'Method $method reasoning',
+          style: const TextStyle(fontSize: 13),
+        ),
         childrenPadding: const EdgeInsets.all(8),
         children: [Text(reasoning, style: const TextStyle(fontSize: 12))],
       ),

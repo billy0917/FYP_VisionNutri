@@ -105,10 +105,12 @@ class ApiClient {
         final m = RegExp('"$key"\\s*:\\s*(\\d+)').firstMatch(content);
         return m != null ? int.tryParse(m.group(1)!) : null;
       }
+
       String? _extractStr(String key) {
         final m = RegExp('"$key"\\s*:\\s*"([^"]*)"').firstMatch(content);
         return m?.group(1);
       }
+
       final foodName = _extractStr('food_name');
       final calories = _extractInt('calories');
       if (foodName != null && calories != null) {
@@ -127,7 +129,7 @@ class ApiClient {
       );
     }
   }
-  
+
   /// RAG-enhanced food analysis pipeline.
   ///
   /// Step 1: Gemini Vision quickly identifies food name from image.
@@ -141,10 +143,9 @@ class ApiClient {
     final ragSteps = <RagDebugStep>[];
 
     if (cameraInfo != null && cameraInfo.isNotEmpty) {
-      ragSteps.add(RagDebugStep(
-        title: 'Camera EXIF Metadata',
-        output: cameraInfo,
-      ));
+      ragSteps.add(
+        RagDebugStep(title: 'Camera EXIF Metadata', output: cameraInfo),
+      );
     }
 
     final foodItems = await _identifyFoodName(imageBase64, ragSteps);
@@ -163,7 +164,9 @@ class ApiClient {
   /// Step 1: Quick food name extraction from image.
   /// Returns a list of (Chinese name, English name) pairs.
   Future<List<(String chi, String eng)>> _identifyFoodName(
-      String imageBase64, List<RagDebugStep> steps) async {
+    String imageBase64,
+    List<RagDebugStep> steps,
+  ) async {
     try {
       final body = jsonEncode({
         'model': AppConfig.visionModel,
@@ -175,7 +178,8 @@ class ApiClient {
             'content': [
               {
                 'type': 'text',
-                'text': '圖中是什麼食物？每種食物用「繁體中文|English」格式回答，多種食物用頓號分隔。'
+                'text':
+                    '圖中是什麼食物？每種食物用「繁體中文|English」格式回答，多種食物用頓號分隔。'
                     '只回答格式本身，不要其他文字。'
                     '例子：魚蛋|Fish ball、燒賣|Siu Mai、白飯|Steamed white rice',
               },
@@ -188,18 +192,21 @@ class ApiClient {
         ],
       });
 
-      final response = await http.post(
-        Uri.parse(AppConfig.visionApiUrl),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ${AppConfig.visionApiKey}',
-        },
-        body: body,
-      ).timeout(const Duration(seconds: 60));
+      final response = await http
+          .post(
+            Uri.parse(AppConfig.visionApiUrl),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ${AppConfig.visionApiKey}',
+            },
+            body: body,
+          )
+          .timeout(const Duration(seconds: 60));
 
       if (response.statusCode == 200) {
         final decoded = jsonDecode(response.body);
-        final raw = (decoded['choices'][0]['message']['content'] as String).trim();
+        final raw = (decoded['choices'][0]['message']['content'] as String)
+            .trim();
         // Parse "中文|English、中文|English" format
         final items = raw
             .split(RegExp(r'、|,\s*'))
@@ -213,17 +220,21 @@ class ApiClient {
             })
             .toList();
         final displayPairs = items.map((e) => '${e.$1} (${e.$2})').join('、');
-        steps.add(RagDebugStep(
-          title: 'Step 1 — Food Identification (${AppConfig.visionModel})',
-          output: displayPairs,
-        ));
+        steps.add(
+          RagDebugStep(
+            title: 'Step 1 — Food Identification (${AppConfig.visionModel})',
+            output: displayPairs,
+          ),
+        );
         return items;
       }
     } catch (e) {
-      steps.add(RagDebugStep(
-        title: 'Step 1 — Food Identification',
-        output: 'Error: $e',
-      ));
+      steps.add(
+        RagDebugStep(
+          title: 'Step 1 — Food Identification',
+          output: 'Error: $e',
+        ),
+      );
     }
     return [('Unknown food', 'Unknown food')];
   }
@@ -232,7 +243,9 @@ class ApiClient {
   /// Text search uses Chinese name on food_name_chi.
   /// Vector search fallback uses English name for better embedding accuracy.
   Future<List<Map<String, dynamic>>> _searchCfsDatabase(
-      List<(String chi, String eng)> foodItems, List<RagDebugStep> steps) async {
+    List<(String chi, String eng)> foodItems,
+    List<RagDebugStep> steps,
+  ) async {
     final allMatches = <Map<String, dynamic>>[];
     final debugParts = <String>[];
     final foodName = foodItems.map((e) => e.$1).join('、');
@@ -247,7 +260,9 @@ class ApiClient {
         try {
           final textHits = await SupabaseService.client
               .from('cfs_foods')
-              .select('food_id, food_name_chi, food_name_eng, energy_kcal, protein_g, carbohydrate_g, fat_g, serving_size')
+              .select(
+                'food_id, food_name_chi, food_name_eng, energy_kcal, protein_g, carbohydrate_g, fat_g, serving_size',
+              )
               .ilike('food_name_chi', '%$chi%')
               .limit(3);
           hits = List<Map<String, dynamic>>.from(textHits as List? ?? []);
@@ -256,7 +271,10 @@ class ApiClient {
               r['similarity'] = 0.8;
             }
             final lines = hits
-                .map((m) => '  ${m['food_name_eng'] ?? '?'} (${m['food_name_chi'] ?? '?'})')
+                .map(
+                  (m) =>
+                      '  ${m['food_name_eng'] ?? '?'} (${m['food_name_chi'] ?? '?'})',
+                )
                 .join('\n');
             debugParts.add('[$chi] text match (chi):\n$lines');
             allMatches.addAll(hits);
@@ -266,37 +284,45 @@ class ApiClient {
 
         // --- B) Vector search fallback: English name for embedding ---
         try {
-          final embedResponse = await http.post(
-            Uri.parse(AppConfig.embeddingApiUrl),
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer ${AppConfig.embeddingApiKey}',
-            },
-            body: jsonEncode({
-              'model': AppConfig.embeddingModel,
-              'input': eng,
-              'dimensions': AppConfig.embeddingDimensions,
-            }),
-          ).timeout(const Duration(seconds: 60));
+          final embedResponse = await http
+              .post(
+                Uri.parse(AppConfig.embeddingApiUrl),
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': 'Bearer ${AppConfig.embeddingApiKey}',
+                },
+                body: jsonEncode({
+                  'model': AppConfig.embeddingModel,
+                  'input': eng,
+                  'dimensions': AppConfig.embeddingDimensions,
+                }),
+              )
+              .timeout(const Duration(seconds: 60));
 
           if (embedResponse.statusCode == 200) {
             final embedData = jsonDecode(embedResponse.body);
-            final embedding =
-                (embedData['data'][0]['embedding'] as List).cast<double>();
-            final response = await SupabaseService.client.rpc('match_cfs_food', params: {
-              'query_embedding': embedding,
-              'match_count': 3,
-              'match_threshold': 0.45,
-            });
+            final embedding = (embedData['data'][0]['embedding'] as List)
+                .cast<double>();
+            final response = await SupabaseService.client.rpc(
+              'match_cfs_food',
+              params: {
+                'query_embedding': embedding,
+                'match_count': 3,
+                'match_threshold': 0.45,
+              },
+            );
             hits = List<Map<String, dynamic>>.from(response as List? ?? []);
           }
         } catch (_) {}
 
         if (hits.isNotEmpty) {
-          final lines = hits.map((m) {
-            final sim = ((m['similarity'] as num? ?? 0) * 100).toStringAsFixed(1);
-            return '  ${m['food_name_eng'] ?? '?'} (${m['food_name_chi'] ?? '?'}) — $sim%';
-          }).join('\n');
+          final lines = hits
+              .map((m) {
+                final sim = ((m['similarity'] as num? ?? 0) * 100)
+                    .toStringAsFixed(1);
+                return '  ${m['food_name_eng'] ?? '?'} (${m['food_name_chi'] ?? '?'}) — $sim%';
+              })
+              .join('\n');
           debugParts.add('[$chi] vector fallback (eng: "$eng"):\n$lines');
           allMatches.addAll(hits);
         } else {
@@ -307,23 +333,30 @@ class ApiClient {
       // Deduplicate by food_id, highest similarity first
       final seen = <dynamic>{};
       final merged = <Map<String, dynamic>>[];
-      for (final m in allMatches
-        ..sort((a, b) => ((b['similarity'] as num? ?? 0)
-            .compareTo(a['similarity'] as num? ?? 0)))) {
+      for (final m
+          in allMatches..sort(
+            (a, b) => ((b['similarity'] as num? ?? 0).compareTo(
+              a['similarity'] as num? ?? 0,
+            )),
+          )) {
         if (seen.add(m['food_id'])) merged.add(m);
         if (merged.length >= 5) break;
       }
 
-      steps.add(RagDebugStep(
-        title: 'Step 2 — CFS Database Search (text → vector)',
-        output: 'Query: "$foodName"\n${debugParts.join('\n')}',
-      ));
+      steps.add(
+        RagDebugStep(
+          title: 'Step 2 — CFS Database Search (text → vector)',
+          output: 'Query: "$foodName"\n${debugParts.join('\n')}',
+        ),
+      );
       return merged;
     } catch (e) {
-      steps.add(RagDebugStep(
-        title: 'Step 2 — CFS Database Search',
-        output: 'Error: $e',
-      ));
+      steps.add(
+        RagDebugStep(
+          title: 'Step 2 — CFS Database Search',
+          output: 'Error: $e',
+        ),
+      );
       return [];
     }
   }
@@ -342,15 +375,23 @@ class ApiClient {
     String topCfsName = '';
 
     if (cfsMatches.isNotEmpty) {
-      final cfsContext = cfsMatches.map((m) {
-        final name = '${m['food_name_eng'] ?? ''} (${m['food_name_chi'] ?? ''})';
-        final fatVal = m['fat_g'];
-        final fatStr = (fatVal == null || fatVal.toString() == 'null') ? 'not recorded' : '${fatVal}g';
-        final per100 = 'Per 100g: ${m['energy_kcal']}kcal, '
-            'protein ${m['protein_g']}g, carbs ${m['carbohydrate_g']}g, fat $fatStr';
-        final sim = ((m['similarity'] as num? ?? 0) * 100).toStringAsFixed(0);
-        return '$name\n$per100 (match $sim%)';
-      }).join('\n\n');
+      final cfsContext = cfsMatches
+          .map((m) {
+            final name =
+                '${m['food_name_eng'] ?? ''} (${m['food_name_chi'] ?? ''})';
+            final fatVal = m['fat_g'];
+            final fatStr = (fatVal == null || fatVal.toString() == 'null')
+                ? 'not recorded'
+                : '${fatVal}g';
+            final per100 =
+                'Per 100g: ${m['energy_kcal']}kcal, '
+                'protein ${m['protein_g']}g, carbs ${m['carbohydrate_g']}g, fat $fatStr';
+            final sim = ((m['similarity'] as num? ?? 0) * 100).toStringAsFixed(
+              0,
+            );
+            return '$name\n$per100 (match $sim%)';
+          })
+          .join('\n\n');
 
       topCfsName = cfsMatches.first['food_name_eng'] as String? ?? foodName;
 
@@ -359,32 +400,32 @@ class ApiClient {
           : 'Photo taken by a typical smartphone. ';
 
       // Detect ARCore-measured dimensions to give a more specific instruction.
-      final hasArMeasure = cameraInfo != null &&
-          cameraInfo.contains('ARCore-measured');
+      final hasArMeasure =
+          cameraInfo != null && cameraInfo.contains('ARCore-measured');
 
       final measureStep = hasArMeasure
           ? '1. MEASURE: The food\'s physical bounding-box dimensions were measured with ARCore '
-            '(see the camera metadata). Use them directly. Note: actual food volume is '
-            'typically 50-70% of the rectangular bounding box.\n'
+                '(see the camera metadata). Use them directly. Note: actual food volume is '
+                'typically 50-70% of the rectangular bounding box.\n'
           : (cameraInfo != null && cameraInfo.contains('OPTICS:'))
-            ? '1. MEASURE: The camera metadata includes an OPTICS block with the '
-              'horizontal field of view and a pixel-to-cm formula. '
-              'IMPORTANT: use that formula to calibrate the food container dimensions. '
-              'Step 1a — count the container\'s pixel width in the image. '
-              'Step 1b — estimate subject distance D_cm from scene depth cues (table surface angle, '
-              'background objects). '
-              'Step 1c — apply: real_width_cm = 2 × D_cm × tan(pixel_width × deg_per_px × π/360) '
-              'where deg_per_px is given in the OPTICS block. '
-              'Use the same approach for length and height.\n'
-            : '1. MEASURE: Estimate each food item\'s physical dimensions (length × width × height in cm) '
-              'using perspective cues, plate/bowl/container size, and common object knowledge.\n';
+          ? '1. MEASURE: The camera metadata includes an OPTICS block with the '
+                'horizontal field of view and a pixel-to-cm formula. '
+                'IMPORTANT: use that formula to calibrate the food container dimensions. '
+                'Step 1a — count the container\'s pixel width in the image. '
+                'Step 1b — estimate subject distance D_cm from scene depth cues (table surface angle, '
+                'background objects). '
+                'Step 1c — apply: real_width_cm = 2 × D_cm × tan(pixel_width × deg_per_px × π/360) '
+                'where deg_per_px is given in the OPTICS block. '
+                'Use the same approach for length and height.\n'
+          : '1. MEASURE: Estimate each food item\'s physical dimensions (length × width × height in cm) '
+                'using perspective cues, plate/bowl/container size, and common object knowledge.\n';
 
       // Reasoning schema hint varies by measurement method
       final reasoningHint = hasArMeasure
           ? '"reasoning": "ARCore dims LxWxH cm → ~V mL → ~Wg, CFS: [name]"'
           : (cameraInfo != null && cameraInfo.contains('OPTICS:'))
-            ? '"reasoning": "EXIF FOV-calibrated: ~Wpx × D_cm → ~Wcm; dims LxWxH cm → ~V mL → ~Wg, CFS: [name]"'
-            : '"reasoning": "dims ~LxWxH cm → ~V mL → ~Wg, CFS: [name]"';
+          ? '"reasoning": "EXIF FOV-calibrated: ~Wpx × D_cm → ~Wcm; dims LxWxH cm → ~V mL → ~Wg, CFS: [name]"'
+          : '"reasoning": "dims ~LxWxH cm → ~V mL → ~Wg, CFS: [name]"';
 
       systemPrompt =
           'You are a precise nutritionist with expertise in estimating food portions from photos. '
@@ -404,7 +445,8 @@ class ApiClient {
           '"carbs": integer, "fat": integer, '
           '$reasoningHint}';
 
-      userText = 'CFS official nutrition data (per 100g):\n$cfsContext\n\n'
+      userText =
+          'CFS official nutrition data (per 100g):\n$cfsContext\n\n'
           'Estimate the portion from the image and calculate total nutrition.';
     } else {
       systemPrompt = _systemPrompt;
@@ -455,10 +497,12 @@ class ApiClient {
       if (start != -1 && end != -1) content = content.substring(start, end + 1);
     }
 
-    ragSteps.add(RagDebugStep(
-      title: 'Step 3 — Nutrition Analysis (${AppConfig.visionModel})',
-      output: content,
-    ));
+    ragSteps.add(
+      RagDebugStep(
+        title: 'Step 3 — Nutrition Analysis (${AppConfig.visionModel})',
+        output: content,
+      ),
+    );
 
     try {
       final result = jsonDecode(content) as Map<String, dynamic>;
@@ -478,10 +522,12 @@ class ApiClient {
         final m = RegExp('"$key"\\s*:\\s*(\\d+)').firstMatch(content);
         return m != null ? int.tryParse(m.group(1)!) : null;
       }
+
       String? exs(String key) {
         final m = RegExp('"$key"\\s*:\\s*"([^"]*)"').firstMatch(content);
         return m?.group(1);
       }
+
       return FoodAnalysisResult(
         foodName: exs('food_name') ?? foodName,
         calories: ext('calories') ?? 0,
@@ -519,42 +565,44 @@ class ApiClient {
 
     final measureStep = hasArMeasure
         ? '1. MEASURE: The food\'s physical bounding-box dimensions were measured with ARCore '
-          '(see the camera metadata). Use them directly. Note: actual food volume is '
-          'typically 50-70% of the rectangular bounding box.\n'
+              '(see the camera metadata). Use them directly. Note: actual food volume is '
+              'typically 50-70% of the rectangular bounding box.\n'
         : (cameraInfo != null && cameraInfo.contains('OPTICS:'))
-          ? '1. MEASURE: The camera metadata includes an OPTICS block with the '
-            'horizontal field of view and a pixel-to-cm formula. '
-            'IMPORTANT: use that formula to calibrate the food container dimensions. '
-            'Step 1a — count the container\'s pixel width in the image. '
-            'Step 1b — estimate subject distance D_cm from scene depth cues (table surface angle, '
-            'background objects). '
-            'Step 1c — apply: real_width_cm = 2 × D_cm × tan(pixel_width × deg_per_px × π/360) '
-            'where deg_per_px is given in the OPTICS block. '
-            'Use the same approach for length and height.\n'
-          : '1. MEASURE: Estimate each food item\'s physical dimensions (length × width × height in cm) '
-            'using perspective cues, plate/bowl/container size, and common object knowledge.\n';
+        ? '1. MEASURE: The camera metadata includes an OPTICS block with the '
+              'horizontal field of view and a pixel-to-cm formula. '
+              'IMPORTANT: use that formula to calibrate the food container dimensions. '
+              'Step 1a — count the container\'s pixel width in the image. '
+              'Step 1b — estimate subject distance D_cm from scene depth cues (table surface angle, '
+              'background objects). '
+              'Step 1c — apply: real_width_cm = 2 × D_cm × tan(pixel_width × deg_per_px × π/360) '
+              'where deg_per_px is given in the OPTICS block. '
+              'Use the same approach for length and height.\n'
+        : '1. MEASURE: Estimate each food item\'s physical dimensions (length × width × height in cm) '
+              'using perspective cues, plate/bowl/container size, and common object knowledge.\n';
 
     String systemPrompt;
     String userText;
 
     if (cfsMatches.isNotEmpty) {
-      final cfsContext = cfsMatches.map((m) {
-        final name =
-            '${m['food_name_eng'] ?? ''} (${m['food_name_chi'] ?? ''})';
-        final fatVal = m['fat_g'];
-        final fatStr = (fatVal == null || fatVal.toString() == 'null')
-            ? 'not recorded'
-            : '${fatVal}g';
-        return '$name\nPer 100g: ${m['energy_kcal']}kcal, '
-            'protein ${m['protein_g']}g, carbs ${m['carbohydrate_g']}g, fat $fatStr';
-      }).join('\n\n');
+      final cfsContext = cfsMatches
+          .map((m) {
+            final name =
+                '${m['food_name_eng'] ?? ''} (${m['food_name_chi'] ?? ''})';
+            final fatVal = m['fat_g'];
+            final fatStr = (fatVal == null || fatVal.toString() == 'null')
+                ? 'not recorded'
+                : '${fatVal}g';
+            return '$name\nPer 100g: ${m['energy_kcal']}kcal, '
+                'protein ${m['protein_g']}g, carbs ${m['carbohydrate_g']}g, fat $fatStr';
+          })
+          .join('\n\n');
 
       // Reasoning schema hint varies by measurement method
       final reasoningHint = hasArMeasure
           ? '"reasoning":"ARCore dims LxWxH cm → vol → weight → nutrition"'
           : (cameraInfo != null && cameraInfo.contains('OPTICS:'))
-              ? '"reasoning":"EXIF FOV-calibrated: ~Wpx x D_cm → ~Wcm; dims LxWxH cm → vol → weight → nutrition"'
-              : '"reasoning":"dims LxWxH cm → vol → weight → nutrition"';
+          ? '"reasoning":"EXIF FOV-calibrated: ~Wpx x D_cm → ~Wcm; dims LxWxH cm → vol → weight → nutrition"'
+          : '"reasoning":"dims LxWxH cm → vol → weight → nutrition"';
 
       systemPrompt =
           'You are a precise nutritionist with expertise in estimating food portions from photos. '
@@ -577,7 +625,8 @@ class ApiClient {
           '"calories":int,"protein":int,"carbs":int,"fat":int,'
           '$reasoningHint}';
 
-      userText = 'CFS official nutrition data (per 100g):\n$cfsContext\n\n'
+      userText =
+          'CFS official nutrition data (per 100g):\n$cfsContext\n\n'
           'Estimate the portion from the image and calculate total nutrition.';
     } else {
       systemPrompt =
@@ -608,9 +657,7 @@ class ApiClient {
             {'type': 'text', 'text': userText},
             {
               'type': 'image_url',
-              'image_url': {
-                'url': 'data:image/jpeg;base64,$imageBase64'
-              },
+              'image_url': {'url': 'data:image/jpeg;base64,$imageBase64'},
             },
           ],
         },
@@ -696,13 +743,30 @@ class ApiClient {
 
     final hasArMeasure =
         cameraInfo != null && cameraInfo.contains('ARCore-measured');
+    final hasOpticsCalibration =
+        cameraInfo != null && cameraInfo.contains('OPTICS:');
 
     final measureStep = hasArMeasure
         ? 'The object\'s bounding-box dimensions were measured with ARCore '
-          '(see the camera metadata). Use them directly.'
+              '(see the camera metadata). Use them directly.'
+        : hasOpticsCalibration
+        ? 'The camera metadata includes an OPTICS block with the horizontal '
+              'field of view and a pixel-to-cm formula. IMPORTANT: use that '
+              'formula to calibrate the main object\'s dimensions. Step 1a - count '
+              'the object\'s pixel width in the image. Step 1b - estimate subject '
+              'distance D_cm from scene depth cues and nearby reference objects. '
+              'Step 1c - apply: real_width_cm = 2 x D_cm x '
+              'tan(pixel_width x deg_per_px x pi/360) where deg_per_px is given '
+              'in the OPTICS block. Use the same approach for length and height.'
         : 'Estimate the object\'s physical dimensions (length × width × height in cm) '
-          'using perspective cues, nearby objects for scale reference, and common knowledge '
-          'about the object\'s typical size.';
+              'using perspective cues, nearby objects for scale reference, and common knowledge '
+              'about the object\'s typical size.';
+
+    final reasoningHint = hasArMeasure
+        ? 'ARCore dims LxWxH cm'
+        : hasOpticsCalibration
+        ? 'EXIF FOV-calibrated: ~Wpx x D_cm -> ~Wcm; dims LxWxH cm'
+        : 'dims LxWxH cm';
 
     final systemPrompt =
         'You are an expert at estimating physical dimensions of objects from photos. '
@@ -712,7 +776,7 @@ class ApiClient {
         '$measureStep\n\n'
         'Respond ONLY with valid JSON, no markdown, no extra text:\n'
         '{"object_name":"…","width_cm":float,"length_cm":float,"height_cm":float,'
-        '"volume_ml":float,"reasoning":"brief explanation of how you estimated"}';
+        '"volume_ml":float,"reasoning":"$reasoningHint"}';
 
     final body = jsonEncode({
       'model': AppConfig.visionModel,
@@ -725,7 +789,8 @@ class ApiClient {
           'content': [
             {
               'type': 'text',
-              'text': 'Estimate the physical dimensions of the main object in this photo.',
+              'text':
+                  'Estimate the physical dimensions of the main object in this photo.',
             },
             {
               'type': 'image_url',
@@ -821,9 +886,9 @@ class ApiClient {
 class ApiException implements Exception {
   final int statusCode;
   final String message;
-  
+
   ApiException({required this.statusCode, required this.message});
-  
+
   @override
   String toString() => 'ApiException($statusCode): $message';
 }
@@ -844,10 +909,13 @@ class FoodAnalysisResult {
   final int fat;
   final String reasoning;
   final double? confidenceScore;
+
   /// 'cfs_official' if matched from CFS database, 'ai_estimate' otherwise.
   final String dataSource;
+
   /// The matched CFS food name (English), only set when dataSource == 'cfs_official'.
   final String? cfsMatchName;
+
   /// Debug steps from the RAG pipeline, available after analyzeFoodWithRag().
   final List<RagDebugStep>? ragSteps;
 
@@ -883,12 +951,9 @@ class FoodAnalysisResult {
 class ChatResponse {
   final String answer;
   final String? conversationId;
-  
-  ChatResponse({
-    required this.answer,
-    this.conversationId,
-  });
-  
+
+  ChatResponse({required this.answer, this.conversationId});
+
   factory ChatResponse.fromJson(Map<String, dynamic> json) {
     return ChatResponse(
       answer: json['answer'] ?? '',
@@ -909,7 +974,7 @@ class Recipe {
   final int? totalFat;
   final List<dynamic> ingredients;
   final List<dynamic> steps;
-  
+
   Recipe({
     required this.id,
     required this.name,
@@ -922,7 +987,7 @@ class Recipe {
     this.ingredients = const [],
     this.steps = const [],
   });
-  
+
   factory Recipe.fromJson(Map<String, dynamic> json) {
     return Recipe(
       id: json['id'] ?? '',

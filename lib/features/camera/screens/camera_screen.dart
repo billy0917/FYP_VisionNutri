@@ -524,8 +524,8 @@ class _CameraScreenState extends State<CameraScreen> {
                 icon: const Icon(Icons.straighten, color: Colors.deepPurple),
                 label: Text(
                   _arMeasurement == null
-                      ? '📏 尺寸量測 Size Measurement (optional)'
-                      : '📏 重新量測 Re-measure',
+                      ? '📏 Size Measurement (optional)'
+                      : '📏 Re-measure',
                   style: const TextStyle(color: Colors.deepPurple),
                 ),
                 style: OutlinedButton.styleFrom(
