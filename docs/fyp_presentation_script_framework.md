@@ -24,6 +24,10 @@
 
 ## Slide 2: Problem and Motivation
 
+這個研究問題對我來說不是憑空選的。在設計這個 project 之前，我自己試過用不同 AI 工具查詢同一款食物的熱量和營養，發現不同工具給出的數字可以相差一倍甚至更多。當時我還沒辦法完全解釋原因，但這個觀察讓我開始懷疑，問題不是 AI 不夠強，而是它在回答這類具體事實性問題時，根本沒有可靠的資料依據。
+
+這個生活觀察，加上課程裡學過的 mobile app design and development, computer vision, 以及intern中學到的llm和rag的相關知識，讓我找到了一個可以把兩者連起來的研究方向：如果 AI 在 nutrition 場景容易出問題，而 RAG 被認為能改善 factual grounding，那麼把這兩件事放在同一個可測試的系統中研究，就有明確的學術動機。同時，作為一個 AI & EdTech 的 project，我也意識到一個給出不可信資訊的工具，根本無法成為一個有效的 learning tool——這個認識讓我把 RAG 從純技術選擇提升為設計原則。
+
 我選這個題目的原因，是因為現有的飲食記錄方式雖然很多，但在真實使用中有兩個很明顯的技術問題。
 
 第一個問題是營養幻覺。當使用大模型回答食物營養、熱量或飲食建議時，如果沒有可靠資料來源，模型很容易生成看起來合理、但實際上不準確的內容。這對 nutrition 場景來說是高風險問題。
@@ -40,43 +44,59 @@
 
 這個 project 有幾個主要 contribution。
 
-第一，我開發了一個完整的 Flutter mobile app，支援 food logging、dashboard tracking 和 chat-based nutrition assistance。第二，我把 RAG 引入營養問答流程，並使用香港食物安全中心資料作為主要知識來源，降低模型自由生成造成的錯誤資訊。第三，我研究並測試了多種份量估算方向，包括 ARCore 手動量度、ARCore 結合 SAM 的自動量度、純大模型視覺估算，以及 EXIF 加大模型的方法。第四，我加入 manual nutrition editing，讓整個系統採用 human-in-the-loop 的方式，而不是假設 AI 一定正確。
+第一，我開發了一個完整的 Flutter mobile app，支援 food logging、dashboard tracking 和 chat-based nutrition assistance。第二，我把 RAG 引入到分析營養和營養問答流程，並使用香港食物安全中心資料作為主要知識來源，降低模型自由生成造成的錯誤資訊。第三，我研究並測試了多種份量估算方向，包括 ARCore 手動量度、ARCore 結合 SAM 的自動量度、純大模型視覺估算，以及 EXIF 加大模型的方法。
+
+第四，我把這個系統定位在 nutrition literacy 的輔助框架中。透過清晰的 RAG 來源標示、可修正的估算結果、個人化 chat guidance 和 dashboard 進度回饋，系統鼓勵使用者不只是被動接收 AI 輸出，而是主動理解和修正自己的飲食紀錄、逐步建立對個人飲食狀況的判斷能力。這對應 EdTech 領域對 evidence-based information scaffold 和 self-directed learning support 的設計原則，也是這個 project 能夠在 AI & EdTech 框架下定位的核心 contribution。
 
 ## Slide 4: System Overview
 
-這一頁是系統總覽。整個系統可以分成兩條主線。
+這一頁是系統總覽。整個系統可以分成三條主線。
 
 第一條是 food logging line。使用者拍攝食物照片後，系統會先取得影像與部分 camera metadata，例如 EXIF 資訊。如果有額外量度資訊，例如 ARCore 或 optics context，也會一併進入分析流程。接著，系統不會直接產生最終營養結果，而是先用模型快速辨識食物名稱。得到食物名稱之後，系統會再用這些名稱去檢索香港食物安全中心的資料庫，找出最相關的官方營養資料。最後，系統才會把影像、本身的 camera context，以及這一輪 RAG 檢索出的 CFS 資料一起送進最後的 nutrition analysis，產生熱量與三大營養素估算。使用者之後可以在結果頁直接修正內容，再把資料存入 dashboard 與 food log。
 
-第二條是 nutrition knowledge line。使用者可以透過 chat assistant 提問與食物和營養有關的問題，系統會先做 retrieval，從香港食物安全中心等資料來源找相關內容，再把結果提供給大模型生成答案。這樣做的目的，是讓回答建立在可追溯的資料上，而不是完全依賴模型記憶。
+第二條是 nutrition knowledge line。使用者可以透過 chat assistant 提問與食物和營養有關的問題，系統除了會先做 retrieval，從香港食物安全中心等資料來源找相關內容，也會把使用者本身的 profile 資料一起納入上下文，例如身高、體重、活動量、飲食目標、每日營養目標、飲食限制、過敏資訊，以及最近一段時間的 food logs 和平均攝取情況。再把這些個人化資訊和檢索結果一起提供給大模型生成答案。這樣做的目的，是讓回答不只建立在可追溯的資料上，也能根據使用者自己的目標與進度，提供更個人化的建議，例如下一餐吃什麼會更合適，而不是完全依賴模型記憶。
 
-所以這個 system overview 不只是 app flow，也是在對應我研究的兩個核心問題。
+第三條是 dashboard and progress tracking line。當 food logging 完成之後，記錄不會停在單次分析結果，而是會被整理成每天的熱量、蛋白質和餐點進度，讓使用者看到自己距離目標還差多少，今天是否超標，以及目前的攝取狀況。這一條 line 的作用，是把單次 food analysis 轉成可持續追蹤的 progress data，也讓 chat assistant 後續能根據使用者的實際進度，提供更有脈絡的飲食建議。
+
+所以這個 system overview 不只是 app flow，也是在對應我研究的兩個核心問題，同時把 analysis、personalized guidance 和 progress tracking 串成一個完整閉環。
 
 ## Slide 5: Methodology and Design Decisions
 
 這個 project 其中一個重點，是我不是把 AI 當成一定正確的 black box，而是把它拆成兩個可以研究和比較的問題。
 
-第一個問題是 nutrition hallucination。為了處理這個問題，我沒有直接讓大模型自由回答，而是加入 RAG，並使用香港食物安全中心資料作為核心知識來源。這樣的設計，是希望回答能更貼近本地、可信和可查證的營養資訊。
+第一個問題是 nutrition hallucination。為了處理這個問題，我沒有直接讓大模型自由回答，而是加入 RAG，並使用香港食物安全中心資料作為核心知識來源。這樣的設計，是希望回答能更貼近本地、可信和可查證的營養資訊。這個選擇有明確的理論依據：NLP 研究在分析 hallucination 根因時，指出 parametric knowledge（即儲存在模型參數中的知識）在 factual recall 上天生存在 uncertainty，而 retrieval-augmented generation 的核心優勢，是讓知識保持在外部可查的資料庫中，從而把 hallucination 問題從「模型記憶的不確定性」轉移為「檢索覆蓋度」這個更可控的維度。在 nutrition 這類需要高事實準確度的場景，這個理論選擇比 fine-tuning 更適合，因為資料可以獨立更新，也更容易追溯來源。
 
-第二個問題是 portion estimation accuracy。這一部分我沒有只測一種方法，而是研究並比較多個方向，包括 ARCore 手動量度、ARCore 加上 SAM 的自動量度、純大模型估算，以及把 EXIF 和 field-of-view 資訊加入提示後再讓大模型估算。我的重點不是證明某一種方法永遠最好，而是分析不同方法在真實使用情境下的優勢、限制和適用條件。
+第二個問題是 portion estimation accuracy。這一部分我沒有只測一種方法，而是研究並比較多個方向，包括 ARCore 手動量度、ARCore 加上 SAM 的自動量度、純大模型估算，以及把 EXIF 和 field-of-view 資訊加入提示後再讓大模型估算。我的重點不是證明某一種方法永遠最好，而是基於以桌面拍攝不同食物或物件為主的測試，觀察不同方法的優勢、限制和適用條件。
 
 另外，我也刻意保留 manual editing，因為不論是營養回答還是份量估算，只要面向真實使用，就一定存在不確定性。換句話說，這個系統的設計重點不是追求 fully automatic，而是追求更可靠、更可修正、也更有研究價值的 workflow。
 
 ## Slide 6: Interdisciplinary Integration
 
-這個 project 是一個跨領域整合的題目。它不只是 mobile app development，也結合了 computer vision、camera metadata reasoning、LLM and retrieval-based interaction，以及 nutrition-oriented user experience design。
+這個 project 的最重要特點，是它的核心設計決策，每一個都是參考來自不同領域的學術文獻後，才能把跨域的知識應用到同一個系統中。
 
-其中，RAG 和香港食物安全中心資料的結合，對應的是資訊可靠性問題。多種 portion estimation 方法的比較，對應的是電腦視覺與實際量度問題。最後，manual correction、dashboard 和 chat flow，則對應到真實使用中的 HCI 與 usability 問題。
+第一個跨域整合是把 NLP 的 RAG 方法論，應用到 nutrition information retrieval 這個場景。Lewis et al.（2020）在提出 RAG 的原創研究中，討論的主要場景是開放域文件問答和知識密集型 NLP 任務。我參考這個方法論的核心設計邏輯，把它應用到食物知識問答，並以香港在地的官方資料（食物安全中心資料庫）作為 retrieval source。同時，Ji et al.（2023）的 hallucination survey 指出，LLM 的 parametric knowledge 在事實性問題上存在天生的不確定性，retrieval-grounded generation 是目前主流的緩解方向之一。基於這兩份文獻，我選擇 RAG 而非 fine-tuning 作為 hallucination 的處理策略，也確立了把外部可查資料庫作為知識來源的設計原則。
 
-所以這個 project 的價值，不只是把不同技術放在一起，而是讓每一個技術都對應到一個實際的研究問題。
+第二個跨域整合是把 camera optics 的幾何學知識，應用到 LLM prompt engineering。Lo et al.（2020）在 IEEE Journal of Biomedical and Health Informatics 發表的 image-based food classification and volume estimation review 中，系統性地整理了利用相機校準資訊（包括 intrinsic parameters 和 reference objects）來提供幾何上下文、改善食物體積估算的各種方法。我參考這個方向，從 EXIF 中的 35mm 等效焦距出發，根據標準光學幾何公式計算出 pixel-to-cm 的對應關係，再把這個 OPTICS block 注入 Gemini 的 prompt，讓語言模型在推理食物尺寸時有明確的幾何依據，而不是單純依賴視覺判斷。這個應用是對文獻中 camera calibration for food estimation 思路在 mobile LLM context 下的延伸。
+
+第三個跨域整合是把 HCI 關於 human-AI interaction 的研究成果，應用到系統的 human-in-the-loop 設計決策中。Amershi et al.（2019）在 CHI 2019 發表的 18 項 human-AI interaction guidelines 中，明確指出 AI 系統應該讓用戶能夠修正錯誤、了解系統行為的依據，並在不確定時給予清楚的提示。Shneiderman（2020）在 International Journal of Human-Computer Interaction 發表的 Human-Centered AI 框架也指出，高品質的 AI 系統設計應同時保留高度的 human control 和高度的 automation，而不是兩者取其一。我參考這兩項 HCI 研究，把 manual nutrition editing（在 camera 結果頁和 dashboard 都可修改）以及 RAG 來源標示（顯示「CFS Official」或「AI Estimate」）定位為系統架構中不可缺少的設計要素，而不是附加的功能。這個決策需要同時理解 HCI 對 AI 系統可信度的設計原則（HCI），以及 food analysis 作為高不確定性任務的特性（computer vision / AI），才能得出「不追求全自動」的結論。
+
+這三個整合共同說明，這個 project 的每個核心設計決策，都是在參考相關領域的學術文獻之後，把不同領域的知識應用到同一個系統中的結果。
 
 ## Slide 7: Key Features
 
-在功能上，我想先強調四個最核心的部分，但這四個功能其實都服務於我的研究主軸。
+在功能上，整個 app 有幾個核心部分，而每個部分都對應我的研究問題或系統設計決策。
 
-第一是 RAG-based chat assistant，用來測試在營養問答中加入可靠知識來源後，能不能降低 hallucination。第二是 camera-based food analysis，用來承載不同 portion estimation 方法的比較。第三是 nutrition editing，因為這能反映 AI 在真實使用中仍然需要 human correction。第四是 dashboard tracking，讓整個系統不只是單次分析，而是完整的 diet logging workflow。
+第一是三步驟 RAG food logging pipeline。使用者拍照後，系統不是直接估算，而是先用 Gemini 辨識食物名稱，再用中文文字檢索和 pgvector 向量搜尋找出 CFS 官方資料，最後才把圖片、camera context 和 CFS 資料一起送入 Gemini 做最終營養估算。結果頁會清楚顯示是「CFS Official」還是「AI Estimate」，也有 expandable RAG pipeline 詳細步驟。
 
-所以這些不是單純的 app features，而是研究問題在系統中的具體落地方式。
+第二是多種分量估算方式。系統支援三種方式讓模型獲得幾何上下文：ARCore 深度感測量度食物的 3D 邊框尺寸、EXIF 相機元資料推算 field-of-view 和 pixel-to-cm 公式、以及退回純視覺估算。這三種方式是我用 benchmark 工具進行比較的對象。
+
+第三是 manual nutrition editing 和 human-in-the-loop 設計。在 camera 分析結果頁和 dashboard 的每一筆記錄上，使用者都可以直接修改食物名稱和所有營養數值。這是系統設計的一部分，反映了 AI 估算仍然需要保留人工修正空間。
+
+第四是個人化 AI 營養助理 chat。系統載入時會自動取得使用者的 profile，包括身高、體重、活動量、飲食目標、飲食限制和過敏資訊，以及最近 30 天的 food logs 和每日平均統計。這些資料會注入每一次對話的系統 prompt。當使用者詢問特定食物時，系統還會額外觸發 CFS RAG，把官方資料帶入回答。
+
+第五是 dashboard 和進度追蹤。Dashboard 會顯示今天的熱量消耗與目標比較、三大營養素總量、已記錄餐點，以及完整的 meal history。這一層把單次分析結果轉成可持續追蹤的個人進度數據。
+
+這些不是各自獨立的 app features，而是每一個都對應到系統設計中的某個研究決策或問題。
 
 ## Slide 8: Demo
 
@@ -198,6 +218,10 @@
 ### 當評審問這個 project 最大限制是什麼
 
 最大的限制有兩個。第一，RAG 可以降低 hallucination，但不能保證所有 nutrition 回答都完全正確，因為它仍受資料覆蓋度和 retrieval quality 影響。第二，food portion estimation 在真實環境中仍然高度不確定，特別是複合食物、遮擋和拍攝條件不理想的情況。因此我把系統定位成 AI-assisted logging，而不是 fully automatic diagnosis or measurement system。
+
+### 當評審問這個 project 的 EdTech 意義
+
+這個 project 的 EdTech 意義體現在兩個層面。第一，系統的設計本身是一個 nutrition learning scaffold：RAG 來源標示讓使用者看到資料依據、可修正的估算結果讓使用者保持判斷主體性、dashboard 提供 formative feedback、個人化 chat 提供 context-aware nutrition guidance。這些 UX 決策都是為了支援 self-directed health learning，讓使用者不只是被動使用工具，而是逐漸建立對自身飲食狀況的理解能力。第二，AI 工具的資訊可信度，本質上是一個 EdTech 的核心問題——一個給出不可靠資訊的工具，pedagogical value 根本性地下降，甚至有害。RAG 的引入，不只是解決技術層面的 hallucination，也是確保這個工具能夠成為一個有 educational credibility 的 learning aid。這兩點讓這個 project 的技術決策，能夠對應到 AI & EdTech 課程的核心關注。
 
 ## 你答辯前一定要替換的內容
 
