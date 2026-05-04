@@ -13,7 +13,7 @@ Built with Flutter and Supabase, the system integrates a robust Retrieval-Augmen
 
 2. **Enhancing Portion Estimation Accuracy**
    - **Baseline (Method A)**: Pure AI estimation from 2D images, which lacks scale context.
-   - **Focal Length & EXIF Injection (Method B)**: Extracts camera EXIF data to feed hardware-specific field-of-view parameters to the AI, reducing depth ambiguity.
+   - **Focal Length & EXIF Injection (Method B)**: Extracts camera EXIF data to feed hardware-specific field-of-view parameters to the AI, reducing depth ambiguity. **Testing evaluations demonstrated that this method effectively improves portion estimation accuracy over the baseline.**
    - **ARCore + MobileSAM Segmentation (Method C)**: Uses real-time Augmented Reality planes and point clouds to capture physical device-to-food distances, coupled with on-device MobileSAM for precise food boundary segmentation bounding boxes, providing structural dimensions for deterministic volume calculation.
 
 ---
