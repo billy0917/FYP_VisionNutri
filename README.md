@@ -8,6 +8,34 @@ The repository contains:
 - Supabase SQL scripts for app schema and pgvector search
 - A CFS dataset indexer for food nutrition retrieval (RAG)
 
+## Screenshots
+
+Quick UI overview first, followed by system diagrams and evaluation charts.
+
+### App UI screenshots
+
+| Dashboard | Login | Photo Taking |
+|:---:|:---:|:---:|
+| ![](screenshot/03_app_ui_screenshots/09_dashboard_screen_image21.jpg) | ![](screenshot/03_app_ui_screenshots/08_login_screen_image3.png) | ![](screenshot/03_app_ui_screenshots/12_photo_taking_screen_image4.png) |
+| **After Analysis** | **Detail Info** | **Edit Nutrition** |
+| ![](screenshot/03_app_ui_screenshots/13_after_analysis_screen_image2.png) | ![](screenshot/03_app_ui_screenshots/14_detail_information_screen_image6.png) | ![](screenshot/03_app_ui_screenshots/10_editing_nutrition_screen_image16.jpg) |
+| **History** | **Chat Suggestion** | **Chat Response** |
+| ![](screenshot/03_app_ui_screenshots/11_history_screen_image18.png) | ![](screenshot/03_app_ui_screenshots/16_chat_suggested_questions_screen_image7.png) | ![](screenshot/03_app_ui_screenshots/17_chat_response_screen_image22.jpg) |
+| **Profile** | **ARCore MobileSAM** | |
+| ![](screenshot/03_app_ui_screenshots/15_profile_screen_image14.png) | ![](screenshot/03_app_ui_screenshots/18_arcore_mobilesam_screen_image13.png) | |
+
+### System design diagrams
+
+![](screenshot/02_system_design_diagrams/05_figure_4_system_architecture_image12.png)
+![](screenshot/02_system_design_diagrams/06_figure_5_three_step_rag_pipeline_image9.png)
+![](screenshot/02_system_design_diagrams/07_figure_6_portion_estimation_methods_image11.png)
+
+### Testing & evaluation charts
+
+![](screenshot/04_testing_evaluation_charts/19_figure_7_baseline_vs_rag_mae_bar_chart_image23.png)
+![](screenshot/04_testing_evaluation_charts/20_figure_8_calorie_prediction_scatter_plot_image1.png)
+![](screenshot/04_testing_evaluation_charts/22_figure_10_portion_estimation_error_chart_image10.png)
+
 ## What Is Implemented
 
 ### Flutter app
@@ -283,32 +311,3 @@ Before production:
 
 SmartDiet AI provides nutrition estimates and guidance for informational use.
 It is not a medical diagnosis or treatment system.
-## Screenshots
-
-A gallery of UI screenshots, system diagrams, and evaluation charts is available in the `screenshot/` folder.
-
-### System design diagrams
-
-![](screenshot/02_system_design_diagrams/07_figure_6_portion_estimation_methods_image11.png)
-![](screenshot/02_system_design_diagrams/06_figure_5_three_step_rag_pipeline_image9.png)
-![](screenshot/02_system_design_diagrams/05_figure_4_system_architecture_image12.png)
-
-### App UI screenshots
-
-![](screenshot/03_app_ui_screenshots/08_login_screen_image3.png)
-![](screenshot/03_app_ui_screenshots/12_photo_taking_screen_image4.png)
-![](screenshot/03_app_ui_screenshots/13_after_analysis_screen_image2.png)
-![](screenshot/03_app_ui_screenshots/14_detail_information_screen_image6.png)
-![](screenshot/03_app_ui_screenshots/16_chat_suggested_questions_screen_image7.png)
-![](screenshot/03_app_ui_screenshots/15_profile_screen_image14.png)
-![](screenshot/03_app_ui_screenshots/11_history_screen_image18.png)
-![](screenshot/03_app_ui_screenshots/09_dashboard_screen_image21.jpg)
-![](screenshot/03_app_ui_screenshots/10_editing_nutrition_screen_image16.jpg)
-![](screenshot/03_app_ui_screenshots/17_chat_response_screen_image22.jpg)
-![](screenshot/03_app_ui_screenshots/18_arcore_mobilesam_screen_image13.png)
-
-### Testing & evaluation charts
-
-![](screenshot/04_testing_evaluation_charts/20_figure_8_calorie_prediction_scatter_plot_image1.png)
-![](screenshot/04_testing_evaluation_charts/19_figure_7_baseline_vs_rag_mae_bar_chart_image23.png)
-![](screenshot/04_testing_evaluation_charts/22_figure_10_portion_estimation_error_chart_image10.png)
