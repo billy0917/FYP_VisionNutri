@@ -283,7 +283,6 @@ Before production:
 
 SmartDiet AI provides nutrition estimates and guidance for informational use.
 It is not a medical diagnosis or treatment system.
-
 ## Screenshots
 
 A gallery of UI screenshots, system diagrams, and evaluation charts is available in the `screenshot/` folder.

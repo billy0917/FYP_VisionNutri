@@ -15,16 +15,16 @@ class AppConfig {
   // Supabase configuration
   // TODO: Replace with your actual Supabase credentials
   static const String supabaseUrl = 'https://vaxmpwjuubmjavwppwnm.supabase.co';
-  static const String supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZheG1wd2p1dWJtamF2d3Bwd25tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU3NzkxNTAsImV4cCI6MjA4MTM1NTE1MH0.3UNbqFGeP3_gCpejk8XYbAMJHclzZTBb8gApTzuntwQ';
+  static const String supabaseAnonKey = '';
   
   // Vision AI - direct call from app (no local server needed)
   static const String visionApiUrl = 'https://api.apiplus.org/v1/chat/completions';
-  static const String visionApiKey = 'sk-MHOUpYHg1MDV6LG1RjXdxmDoZ7t4ujGwsxzbBociNEw3xsob';
+  static const String visionApiKey = '';
   static const String visionModel = 'gemini-3.1-flash-lite-preview';
 
   // RAG - Embedding API (same relay, OpenAI-compatible)
   static const String embeddingApiUrl = 'https://api.apiplus.org/v1/embeddings';
-  static const String embeddingApiKey = 'sk-XSgyv0BxhhHwSGWmgTkJg7wj2fOMcXDgAN0MVW4z8yJEtpE0';
+  static const String embeddingApiKey = '';
   static const String embeddingModel = 'text-embedding-3-small';
   static const int embeddingDimensions = 768;
 
