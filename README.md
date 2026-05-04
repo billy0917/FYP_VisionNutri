@@ -1,6 +1,22 @@
 # SmartDiet AI
 
-SmartDiet AI is a multimodal nutrition tracking app built with Flutter, Supabase, on-device segmentation, and AI-assisted analysis.
+**SmartDiet AI** is a multimodal nutrition tracking application focused on solving two critical challenges in modern AI dietary assessment: **LLM nutrition hallucination** and **inaccurate portion estimation**. 
+
+Built with Flutter and Supabase, the system integrates a robust Retrieval-Augmented Generation (RAG) pipeline and advanced contextual computer vision techniques to deliver highly accurate, localized, and verifiable dietary tracking.
+
+### Key Innovations
+
+1. **Resolving AI Nutrition Hallucinations (CFS-Backed RAG)**
+   - Instead of relying on the unpredictable internal knowledge of LLMs (like Gemini), the app implements a 3-step RAG pipeline.
+   - It queries a verified authoritative database (Centre for Food Safety, Hong Kong) using vector embeddings to retrieve precise nutritional data.
+   - The AI only synthesizes final values strictly based on this grounded context, significantly reducing arbitrary calorie/macro hallucinations.
+
+2. **Enhancing Portion Estimation Accuracy**
+   - **Baseline (Method A)**: Pure AI estimation from 2D images, which lacks scale context.
+   - **Focal Length & EXIF Injection (Method B)**: Extracts camera EXIF data to feed hardware-specific field-of-view parameters to the AI, reducing depth ambiguity.
+   - **ARCore + MobileSAM Segmentation (Method C)**: Uses real-time Augmented Reality planes and point clouds to capture physical device-to-food distances, coupled with on-device MobileSAM for precise food boundary segmentation bounding boxes, providing structural dimensions for deterministic volume calculation.
+
+---
 
 The repository contains:
 - A Flutter client (primary product)
